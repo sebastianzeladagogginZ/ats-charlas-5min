@@ -9,19 +9,22 @@ La paleta de colores está tomada del formulario de inspecciones **SEG-F-010**
 
 ---
 
-## ✅ Estado: BACKEND YA DESPLEGADO (cuenta SSOMA ONI · 3 ago 2026)
+## ✅ Estado: BACKEND Y FRONTEND YA DESPLEGADOS (cuenta SSOMA ONI · 3 ago 2026)
 
-Ya está conectado y probado de extremo a extremo. No necesitas repetir la Parte 1.
+Ya está conectado y probado de extremo a extremo. No necesitas repetir la Parte 1 ni la Parte 2.
 
 - **Cuenta:** `ssomaoni@gmail.com`
 - **Carpeta raíz en Drive:** `ATS y Charlas 2026` (ID `16M5ZqMyRon7Xaxm461FT0B_TTEx00RPK`)
 - **Proyecto Apps Script:** *ATS y Charlas 5 min - Backend Drive*
 - **Endpoint (ya puesto en `index.html`):**
   `https://script.google.com/macros/s/AKfycbzpT_x5ITn5RZBFfKOALsbMF3wEHAJbr2eS4opmNBUtnpV1zToPYiSh097cF8sr45sb/exec`
+- **App en vivo (GitHub Pages, HTTPS):**
+  **<https://sebastianzeladagogginz.github.io/ats-charlas-5min/>** — esta es la URL que abren las cuadrillas desde el móvil.
+- **Repo:** `github.com/sebastianzeladagogginZ/ats-charlas-5min` (rama `main`, raíz `/`). Un `git push` a `main` redespliega la app sola en ~1 min.
 - **Prueba OK:** se subió un archivo a `ATS y Charlas 2026/2026-08 Agosto/2026-08-03/Normalización de Red/`.
 
-**Falta solo 1 paso:** publicar el frontend en HTTPS (GitHub Pages) para que las
-cuadrillas lo abran desde el teléfono. Ver *Parte 2*.
+**Frontend ya publicado.** Las cuadrillas solo abren la URL de arriba y la instalan
+con *"Añadir a pantalla de inicio"*. La *Parte 2* queda como referencia.
 
 > Si cambias el código del backend, re-despliega manteniendo la MISMA URL:
 > *Implementar › Gestionar implementaciones › (lápiz) › Versión: «Nueva» › Implementar.*
@@ -66,20 +69,22 @@ cuadrillas lo abran desde el teléfono. Ver *Parte 2*.
    - *Quién tiene acceso:* **Cualquier usuario**
 6. Autoriza los permisos y copia la **URL** que termina en `/exec`.
 
-### Parte 2 — Frontend (esta app)
+### Parte 2 — Frontend (esta app) — ✅ YA PUBLICADO
 
-1. Abre [`index.html`](index.html) y en el bloque `CONFIG` pega la URL:
-   ```js
-   const CONFIG = { endpoint: 'https://script.google.com/macros/s/AKfy…/exec', … };
-   ```
-2. Publica los archivos (`index.html`, `sw.js`, `manifest.json`, `icon.svg`) en
-   **GitHub Pages** o cualquier hosting **HTTPS** (necesario para cámara,
-   Service Worker y cifrado).
-3. Abre la URL en el móvil → menú → **“Añadir a pantalla de inicio”** para
-   instalarla como app.
+Ya está en **GitHub Pages**, no necesitas hacer esto de nuevo:
+**<https://sebastianzeladagogginz.github.io/ats-charlas-5min/>**
 
-> El Service Worker y `crypto.subtle` solo funcionan en **HTTPS** (o
-> `http://localhost`). Abrir el archivo con `file://` deshabilita esas funciones.
+- El `CONFIG.endpoint` de [`index.html`](index.html) ya apunta al `/exec` del backend.
+- Los archivos del PWA (`index.html`, `sw.js`, `manifest.json`, `icon.svg`) se sirven
+  desde la raíz del repo `github.com/sebastianzeladagogginZ/ats-charlas-5min` (rama `main`).
+- **Para actualizar la app en vivo:** edita, `git commit` y `git push` → GitHub Pages
+  redespliega solo en ~1 min. (Si tocas el HTML, sube el número `CACHE` en `sw.js`
+  para forzar la actualización del Service Worker en los teléfonos.)
+- En el móvil, abre la URL → menú → **"Añadir a pantalla de inicio"** para instalarla como app.
+
+> **Referencia (por si algún día repites el despliegue en otra cuenta):** publica esos 4
+> archivos en GitHub Pages o cualquier hosting **HTTPS**. El Service Worker y `crypto.subtle`
+> solo funcionan en **HTTPS** (o `http://localhost`); abrir el archivo con `file://` las deshabilita.
 
 ---
 
