@@ -25,7 +25,7 @@
 
 /* ====================== CONFIGURACIÓN ====================== */
 var ROOT_FOLDER_ID = '16M5ZqMyRon7Xaxm461FT0B_TTEx00RPK'; // carpeta "ATS y Charlas 2026" (SSOMA ONI)
-var LOG_SHEET_ID   = '';   // (opcional) ID de una Google Sheet para el registro; vacío = sin registro
+var LOG_SHEET_ID   = '1ptmnCGfCHZX5RvWSg0cOczbKzYxNgsDooF_BbVg04fc';   // Sheet "ATS y Charlas 2026 - Registros" (alimenta el Panel SSOMA)
 var LOG_SHEET_NAME = 'Registros';
 /* ========================================================== */
 
