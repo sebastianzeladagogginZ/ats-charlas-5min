@@ -78,14 +78,15 @@ function leerRegistros(e) {
   }
 }
 
-/** Normaliza una fecha a 'AAAA-MM-DD' (si es Date) o devuelve el texto tal cual. */
+/** Normaliza una fecha a 'AAAA-MM-DD'. Las celdas de fecha de Sheets se leen como
+ *  medianoche UTC, así que se formatean en UTC para no adelantar/atrasar un día.
+ *  Si el valor es texto, se devuelve tal cual. */
 function fechaTexto(v) {
   if (v instanceof Date) {
-    return v.getFullYear() + '-' + pad2(v.getMonth() + 1) + '-' + pad2(v.getDate());
+    return Utilities.formatDate(v, 'UTC', 'yyyy-MM-dd');
   }
   return String(v == null ? '' : v);
 }
-function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
 function doPost(e) {
   try {
