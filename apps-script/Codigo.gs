@@ -2,14 +2,15 @@
  * BACKEND — ATS y Charla de 5 minutos → Google Drive
  * ---------------------------------------------------
  * Recibe los registros del formulario (index.html) y guarda los archivos
- * escaneados en Drive con la jerarquía:  Mes ›  Día ›  División
+ * escaneados en Drive con la jerarquía:
+ *   Mes › Día › División › Cuadrilla N › CLIENTE - Circuito X › (ATS | Charla de 5 minutos)
  *
  * Puntos clave del enunciado que resuelve este script:
- *  - Jerarquía de carpetas Mes > Día > División.
- *  - VARIAS cuadrillas, mismo día y misma división → TODO va a la MISMA
- *    carpeta, SIN carpetas duplicadas (getOrCreateFolder + LockService).
- *  - LockService serializa la creación de carpetas: si dos cuadrillas suben
- *    en el mismo segundo, no se crean dos carpetas "División X" repetidas.
+ *  - Jerarquía anidada que separa ATS y Charla de 5 min para que no se mezclen.
+ *  - VARIAS cuadrillas, mismo día y misma división → carpetas compartidas SIN
+ *    duplicados (getOrCreateFolder + LockService solo al crear carpetas).
+ *  - Idempotencia por uploadId (CacheService): un reintento tras un error de red
+ *    NO vuelve a subir los archivos → nunca se duplican en Drive.
  *  - Nombre de archivo con formato estándar de fecha (lo arma el frontend).
  *  - Registro de metadatos (cliente, circuito, área…) en una hoja de cálculo.
  *
@@ -33,11 +34,7 @@ function doGet() {
 }
 
 function doPost(e) {
-  var lock = LockService.getScriptLock();
   try {
-    // Serializa: evita carpetas duplicadas cuando varias cuadrillas suben a la vez.
-    lock.waitLock(30000);
-
     var data = JSON.parse(e.postData.contents);
     if (!data || !data.files || !data.files.length) {
       return json({ ok: false, error: 'Sin archivos en la solicitud.' });
@@ -46,31 +43,62 @@ function doPost(e) {
       return json({ ok: false, error: 'ROOT_FOLDER_ID no configurado en el script.' });
     }
 
-    var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
-
-    // Jerarquía Mes > Día > División (reutiliza la carpeta si ya existe).
-    var mes = getOrCreateFolder(root, sanitize(data.mesFolder || 'Sin-mes'));
-    var dia = getOrCreateFolder(mes, sanitize(data.diaFolder || 'Sin-dia'));
-    var div = getOrCreateFolder(dia, sanitize(data.division || 'Sin-division'));
-
     var meta = data.meta || {};
+
+    // Idempotencia: si este MISMO envío ya se procesó (un reintento tras un error
+    // de red), devuelve el resultado anterior en vez de volver a subir → NO duplica.
+    var cache = CacheService.getScriptCache();
+    var uid = data.uploadId ? ('up_' + String(data.uploadId)) : '';
+    if (uid) {
+      var prev = cache.get(uid);
+      if (prev) return textJson(prev);
+    }
+
+    // Crea/reutiliza la ruta de carpetas. Solo esta parte necesita el candado
+    // (evita carpetas duplicadas si dos cuadrillas suben en el mismo instante).
+    var dest = createFolderPath(data, meta);
+
+    // La subida de archivos NO necesita candado (crear archivos en una carpeta ya
+    // existente no genera duplicados de carpeta), así varias cuadrillas suben en paralelo.
     var saved = [];
     for (var i = 0; i < data.files.length; i++) {
       var f = data.files[i];
       var bytes = Utilities.base64Decode(f.dataB64);
       var blob = Utilities.newBlob(bytes, f.mime || 'image/jpeg', sanitize(f.name));
-      var file = div.createFile(blob);
-      // Guarda los metadatos dentro del propio archivo (queda asociado aunque se mueva).
-      file.setDescription(JSON.stringify(meta));
+      var file = dest.createFile(blob);
+      file.setDescription(JSON.stringify(meta)); // metadatos dentro del propio archivo
       saved.push({ name: file.getName(), id: file.getId(), url: file.getUrl() });
     }
 
-    logToSheet(meta, div.getUrl(), saved);
+    logToSheet(meta, dest.getUrl(), saved);
 
-    return json({ ok: true, folder: div.getUrl(), folderId: div.getId(), saved: saved, count: saved.length });
+    var result = JSON.stringify({ ok: true, folder: dest.getUrl(), folderId: dest.getId(), saved: saved, count: saved.length });
+    if (uid) { try { cache.put(uid, result, 21600); } catch (e3) {} } // 6 h: ventana anti-duplicado para reintentos
+    return textJson(result);
 
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
+  }
+}
+
+/**
+ * Crea (o reutiliza) la jerarquía de carpetas y devuelve la carpeta DESTINO:
+ *   Raíz › Mes › Día › División › Cuadrilla N › CLIENTE - Circuito X › (ATS | Charla de 5 minutos)
+ * Serializa solo la creación de carpetas con LockService para no duplicarlas.
+ */
+function createFolderPath(data, meta) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+    var mes  = getOrCreateFolder(root, sanitize(data.mesFolder || 'Sin-mes'));
+    var dia  = getOrCreateFolder(mes,  sanitize(data.diaFolder || 'Sin-dia'));
+    var div  = getOrCreateFolder(dia,  sanitize(data.division || meta.division || 'Sin-division'));
+    var cuad = getOrCreateFolder(div,  sanitize('Cuadrilla ' + (meta.cuadrilla || 'S-N')));
+    var cliName = (meta.cliente || 'Sin-cliente') + (meta.circuito ? ' - Circuito ' + meta.circuito : '');
+    var cli  = getOrCreateFolder(cuad, sanitize(cliName));
+    var tipoName = (String(meta.tipo || '').toUpperCase().indexOf('ATS') === 0) ? 'ATS' : 'Charla de 5 minutos';
+    return getOrCreateFolder(cli, sanitize(tipoName));
   } finally {
     try { lock.releaseLock(); } catch (e2) {}
   }
@@ -106,6 +134,8 @@ function logToSheet(meta, folderUrl, saved) {
 }
 
 function json(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return textJson(JSON.stringify(obj));
+}
+function textJson(str) {
+  return ContentService.createTextOutput(str).setMimeType(ContentService.MimeType.JSON);
 }

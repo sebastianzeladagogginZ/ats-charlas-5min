@@ -601,8 +601,10 @@ async function buildPayload(){
     const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(files[i].blob);});
     payloadFiles.push({name:fileName(fecha,area,division,cuadrilla,i,files[i].ext),mime:files[i].mime||'image/jpeg',dataB64:b64});
   }
+  const uploadId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
   return {
     app:CONFIG.appVersion,
+    uploadId,                       // identifica el envío: permite reintentar SIN duplicar en Drive
     meta:{tipo,cliente:$('cliente').value.trim(),circuito:$('circuito').value.trim(),
           fecha,cuadrilla,area:$('area').value.trim(),division,enviadoEn:new Date().toISOString()},
     mesFolder:fn.mes, diaFolder:fn.dia, division,
@@ -611,7 +613,10 @@ async function buildPayload(){
 }
 async function sendPayload(payload){
   const res=await fetch(CONFIG.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
-  const data=await res.json();
+  const txt=await res.text();
+  let data;
+  try{ data=JSON.parse(txt); }
+  catch(_){ throw new Error('El servidor respondió de forma inesperada; se reintentará solo.'); }
   if(!data.ok) throw new Error(data.error||'Error del servidor');
   return data;
 }
@@ -630,7 +635,12 @@ async function flushQueue(silent){
     catch(e){break;} // conserva el resto para reintentar
   }
   await updateQueuePill();
-  if(ok&&!silent)toast('ok',`${ok} registro(s) subidos a Drive.`);
+  if(ok)toast('ok',`✅ ${ok} registro(s) en cola subidos a Drive.`);   // avisa aunque sea reintento automático
+}
+let flushBusy=false;
+async function autoFlush(){                         // reintento automático periódico de la cola
+  if(flushBusy)return; flushBusy=true;
+  try{ await flushQueue(true); }catch(e){} flushBusy=false;
 }
 $('flushBtn').addEventListener('click',()=>flushQueue(false));
 
@@ -645,8 +655,9 @@ $('form').addEventListener('submit',async e=>{
 
   const sig=currentSignature();   // identidad de ESTE registro (para el candado anti-duplicados)
   sending=true;const b=$('send');b.disabled=true;b.innerHTML='<span class="spin"></span> Procesando…';
+  let payload=null;
   try{
-    const payload=await buildPayload();
+    payload=await buildPayload();   // se construye UNA sola vez (uploadId estable para reintentos sin duplicar)
     if(navigator.onLine&&endpointReady()){
       b.innerHTML='<span class="spin"></span> Subiendo a Drive…';
       const data=await sendPayload(payload);
@@ -662,10 +673,11 @@ $('form').addEventListener('submit',async e=>{
     await addLock(sig);         // bloquea SOLO este registro por 10 min
   }catch(err){
     sending=false;
-    // si falla la red pese a estar "online", encolar para no perder el trabajo
-    try{const payload=await buildPayload();await queuePayload(payload);
-      toast('err','No se pudo subir ahora ('+err.message+'). Guardado <b>cifrado en cola</b> para reintentar.',9000);
+    // Falló pese a estar "online": encola el MISMO payload (mismo uploadId) y reintenta solo.
+    try{ if(!payload)payload=await buildPayload(); await queuePayload(payload);
+      toast('info','⏳ No se pudo subir en el acto. Quedó <b>cifrado y en cola</b>; se reintentará solo en segundos.',9000);
       files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();await addLock(sig);
+      setTimeout(autoFlush,3000);   // primer reintento rápido
     }catch(e2){toast('err','Error al enviar: '+err.message);refreshSendBtn();}
   }
   updateUI();
@@ -696,6 +708,8 @@ function hideToast(){$('toast').classList.remove('show');}
   REQUIRED.forEach(id=>{if($(id).value.trim())validateField(id);});
   renderThumbs();updateUI();netStatus();updateQueuePill();
   setInterval(refreshSendBtn,1000);   // actualiza la cuenta atrás del candado y lo libera al vencer
+  setInterval(autoFlush,40000);       // reintenta automáticamente la cola cada 40 s
+  autoFlush();                        // e intenta al abrir por si quedó algo pendiente
   if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 })();
 </script>
