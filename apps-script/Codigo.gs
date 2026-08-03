@@ -3,7 +3,7 @@
  * ---------------------------------------------------
  * Recibe los registros del formulario (index.html) y guarda los archivos
  * escaneados en Drive con la jerarquía:
- *   Mes › Día › División › Cuadrilla N › CLIENTE - Circuito X › (ATS | Charla de 5 minutos)
+ *   Mes › Día › Área › División › Cuadrilla N › CLIENTE - Circuito X › (ATS | Charla de 5 minutos)
  *
  * Puntos clave del enunciado que resuelve este script:
  *  - Jerarquía anidada que separa ATS y Charla de 5 min para que no se mezclen.
@@ -93,7 +93,8 @@ function createFolderPath(data, meta) {
     var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
     var mes  = getOrCreateFolder(root, sanitize(data.mesFolder || 'Sin-mes'));
     var dia  = getOrCreateFolder(mes,  sanitize(data.diaFolder || 'Sin-dia'));
-    var div  = getOrCreateFolder(dia,  sanitize(data.division || meta.division || 'Sin-division'));
+    var area = getOrCreateFolder(dia,  sanitize(meta.area || data.area || 'Sin-area'));
+    var div  = getOrCreateFolder(area, sanitize(data.division || meta.division || 'Sin-division'));
     var cuad = getOrCreateFolder(div,  sanitize('Cuadrilla ' + (meta.cuadrilla || 'S-N')));
     var cliName = (meta.cliente || 'Sin-cliente') + (meta.circuito ? ' - Circuito ' + meta.circuito : '');
     var cli  = getOrCreateFolder(cuad, sanitize(cliName));

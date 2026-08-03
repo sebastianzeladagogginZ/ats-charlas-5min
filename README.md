@@ -2,7 +2,7 @@
 
 Aplicación web (PWA) para escanear **ATS (Análisis de Trabajo Seguro)** y **charlas de
 5 minutos** en campo y subirlas automáticamente a Google Drive, organizadas por
-**Mes › Día › División**, sin carpetas duplicadas.
+**Mes › Día › Área › División › Cuadrilla › Cliente-Circuito › (ATS | Charla)**, sin carpetas duplicadas.
 
 La paleta de colores está tomada del formulario de inspecciones **SEG-F-010**
 (navy `#0c4a6e` → celeste `#0284c7`, fondo slate `#f1f5f9`).
@@ -84,20 +84,26 @@ cuadrillas lo abran desde el teléfono. Ver *Parte 2*.
 ```
 ATS y Charlas 2026/
 └── 2026-08 Agosto/
-    └── 2026-08-02/
-        └── Normalización de Red/
-            ├── ATS_2026-08-02_MANTENIMIENTO_Normalizacion-de-Red_Cuadrilla-A_143025_01.jpg
-            ├── ATS_2026-08-02_MANTENIMIENTO_Normalizacion-de-Red_Cuadrilla-A_143025_02.jpg
-            └── Charla-5min_2026-08-02_MANTENIMIENTO_Normalizacion-de-Red_Cuadrilla-B_150210_01.jpg
+    └── 2026-08-03/
+        └── MANTENIMIENTO/                        ← Área
+            └── Normalización de Red/            ← División
+                └── Cuadrilla 4/                  ← N.º de cuadrilla
+                    └── MINERA XYZ S.A.C. - Circuito 310284485/   ← Cliente + circuito
+                        ├── ATS/                  ← documentos ATS (separados)
+                        │   └── ATS_2026-08-03_..._Cuadrilla-4_143025_01.jpg
+                        └── Charla de 5 minutos/  ← charlas (separadas)
+                            └── Charla-5min_2026-08-03_..._Cuadrilla-4_150210_01.jpg
 ```
 
-Todas las cuadrillas de la misma división y día caen en la **misma carpeta**.
+Jerarquía completa: **Mes › Día › Área › División › Cuadrilla › Cliente-Circuito › (ATS | Charla de 5 minutos)**.
+Los ATS y las Charlas quedan en **carpetas separadas** para que no se mezclen. Todas las
+cuadrillas de la misma división y día comparten los niveles superiores, sin duplicar carpetas.
 
-> **Nombre de archivo:** `TIPO_AAAA-MM-DD_ÁREA_DIVISIÓN_CUADRILLA_HHMMSS_NN.jpg`.
-> Incluye el **Área** porque una misma división (p. ej. *ON Negocios*) existe en dos
-> áreas (Mantenimiento y Planta Externa); así los documentos nunca se confunden aunque
-> compartan carpeta. Si prefieres separar por Área también en las **carpetas**
-> (`Mes › Día › Área › División`), avísame y lo ajusto en `Codigo.gs`.
+> **Anti-duplicados:** cada envío lleva un `uploadId` único. Si un reintento (tras un error
+> de red) repite el mismo envío, el backend lo detecta (CacheService, 6 h) y **no vuelve a
+> subir** los archivos. Así el reintento automático de la cola nunca genera duplicados.
+
+> **Nombre de archivo:** `TIPO_AAAA-MM-DD_ÁREA_DIVISIÓN_Cuadrilla-N_HHMMSS_NN.jpg`.
 
 ### Editar el catálogo de áreas/divisiones
 
