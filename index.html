@@ -199,8 +199,8 @@ body.desktop .drop-hint{display:block}
       </div>
 
       <div class="field">
-        <label for="cuadrilla">Cuadrilla <span class="req">*</span></label>
-        <input id="cuadrilla" type="text" placeholder="Ej: Cuadrilla A">
+        <label for="cuadrilla">Cuadrilla (N.º) <span class="req">*</span></label>
+        <input id="cuadrilla" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Ej: 4">
         <small class="err" data-for="cuadrilla"></small>
       </div>
 
@@ -342,7 +342,7 @@ const $=id=>document.getElementById(id);
 /* ---------- Selector de tipo ---------- */
 $('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b)return;
   document.querySelectorAll('.seg-btn').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');tipo=b.dataset.tipo;saveDraft();});
+  b.classList.add('active');tipo=b.dataset.tipo;updateUI();saveDraft();});
 
 /* ============================================================
    Validación en tiempo real
@@ -353,12 +353,14 @@ function validateField(id){
   let msg='';
   if(!val) msg='Campo obligatorio';
   else if(id==='fecha'&&isNaN(Date.parse(val))) msg='Fecha inválida';
+  else if(id==='cuadrilla'&&!/^\d+$/.test(val)) msg='Solo números';
   el.classList.toggle('invalid',!!msg);
   el.classList.toggle('valid',!msg&&!!val);
   if(err)err.textContent=msg;
   return !msg;
 }
-function formValid(){return REQUIRED.every(id=>((($(id).value||'').trim())!=='')&&!(id==='fecha'&&isNaN(Date.parse($(id).value))))&&files.length>0;}
+function formValid(){return REQUIRED.every(id=>{const v=($(id).value||'').trim();
+  return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!(id==='cuadrilla'&&!/^\d+$/.test(v));})&&files.length>0;}
 function updateUI(){
   const done=REQUIRED.filter(id=>(($(id).value||'').trim())!=='').length+(files.length?1:0);
   const pct=Math.round(done/(REQUIRED.length+1)*100);
@@ -366,7 +368,9 @@ function updateUI(){
   refreshSendBtn();
 }
 REQUIRED.forEach(id=>{const el=$(id);
-  const h=()=>{if(id==='area')onAreaChange();validateField(id);updateUI();saveDraft();};
+  const h=()=>{if(id==='area')onAreaChange();
+    if(id==='cuadrilla'){const c=el.value.replace(/[^0-9]/g,'');if(c!==el.value)el.value=c;} // solo números
+    validateField(id);updateUI();saveDraft();};
   el.addEventListener('input',h);      // texto
   el.addEventListener('change',h);     // selects
   el.addEventListener('blur',()=>validateField(id));
@@ -466,12 +470,12 @@ async function addFiles(list){
       toast('info',`⏳ Comprimiendo ${i+1} de ${arr.length}…`,0); // 0 = no se oculta solo
       await nextFrame();                                          // deja que se pinte
       try{
-        const {blob,mime,ext}=await withTimeout(compress(f),25000,'La imagen tardó demasiado');
+        const {blob,mime,ext}=await withTimeout(compress(f),12000,'La imagen tardó demasiado');
         files.push({id:++fileSeq,blob,url:URL.createObjectURL(blob),name:f.name,mime,ext,compressed:true,
                     kb:Math.round(blob.size/1024),origKb:Math.round(f.size/1024)});
         ok++;
       }catch(err){
-        // Nunca perder el documento: se adjunta el original sin comprimir.
+        // Nunca perder el documento ni quedarse pegado: se adjunta el original sin comprimir.
         const ext=((f.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,''))||'jpg';
         files.push({id:++fileSeq,blob:f,url:URL.createObjectURL(f),name:f.name,mime:f.type||'application/octet-stream',ext,compressed:false,
                     kb:Math.round(f.size/1024),origKb:Math.round(f.size/1024)});
@@ -480,10 +484,12 @@ async function addFiles(list){
     }
   } finally {
     $('camInput').value='';$('fileInput').value='';
-    renderThumbs();updateUI();
-    if(fallback&&ok) toast('info',`✅ ${ok} comprimida(s) · ${fallback} adjuntada(s) sin comprimir (formato no soportado, p. ej. HEIC).`,8000);
+    // Reemplaza SIEMPRE el aviso "Comprimiendo…" (antes de pintar miniaturas, por si algo falla ahí).
+    if(fallback&&ok) toast('info',`✅ ${ok} lista(s) · ${fallback} adjuntada(s) sin comprimir (formato no soportado, p. ej. HEIC).`,8000);
     else if(fallback) toast('info',`📎 Adjuntada sin comprimir: el navegador no pudo procesar el formato (p. ej. HEIC de iPhone). Se subirá igual.`,9000);
-    else toast('ok',`✅ ${ok} imagen(es) lista(s).`);
+    else if(ok) toast('ok',`✅ ${ok} imagen(es) lista(s).`);
+    else hideToast();
+    try{ renderThumbs(); updateUI(); }catch(e){ /* no debe bloquear el aviso */ }
   }
 }
 function renderThumbs(){
@@ -529,30 +535,39 @@ async function loadDraft(){
 }
 
 /* ============================================================
-   Bloqueo de 10 minutos del botón enviar (persistente y cifrado)
+   Bloqueo anti-duplicados (10 min) POR REGISTRO.
+   Solo bloquea el MISMO ítem (mismo tipo+cliente+circuito+fecha+
+   cuadrilla+área+división). Si cambias cualquiera de esos campos
+   —p. ej. de ATS a Charla de 5 min— el botón se habilita de nuevo.
    ============================================================ */
-async function setLock(){const until=Date.now()+CONFIG.lockMinutes*60000;
-  localStorage.setItem('lockUntil',JSON.stringify(await enc({until})));startLockTimer(until);}
-async function restoreLock(){const raw=localStorage.getItem('lockUntil');if(!raw)return;
-  try{const {until}=await dec(JSON.parse(raw));if(until>Date.now())startLockTimer(until);else localStorage.removeItem('lockUntil');}catch(e){}}
-function startLockTimer(until){
-  clearInterval(lockTimer);
-  const tick=()=>{const left=until-Date.now();
-    if(left<=0){clearInterval(lockTimer);localStorage.removeItem('lockUntil');refreshSendBtn();return;}
-    const m=String(Math.floor(left/60000)).padStart(2,'0'),s=String(Math.floor(left%60000/1000)).padStart(2,'0');
-    const b=$('send');b.disabled=true;b.classList.add('locked');b.classList.remove();b.classList.add('locked');
-    b.innerHTML=`⏳ Espera ${m}:${s} para enviar de nuevo`;};
-  tick();lockTimer=setInterval(tick,1000);
+let locks = {}; // { firma: timestampHasta }
+function currentSignature(){
+  const n=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+  return [tipo, n($('cliente').value), n($('circuito').value), $('fecha').value,
+          n($('cuadrilla').value), n($('area').value), n($('division').value)].join('|');
 }
-function isLocked(){return $('send').classList.contains('locked');}
+function pruneLocks(){const now=Date.now();for(const k in locks)if(locks[k]<=now)delete locks[k];}
+async function saveLocks(){try{localStorage.setItem('locks',JSON.stringify(await enc(locks)));}catch(e){}}
+async function loadLocks(){const raw=localStorage.getItem('locks');if(!raw){localStorage.removeItem('lockUntil');return;}
+  try{locks=(await dec(JSON.parse(raw)))||{};}catch(e){locks={};}pruneLocks();}
+async function addLock(sig){locks[sig]=Date.now()+CONFIG.lockMinutes*60000;await saveLocks();}
+function lockUntilForCurrent(){pruneLocks();const u=locks[currentSignature()];return (u&&u>Date.now())?u:0;}
 
 /* ---------- Estado del botón enviar ---------- */
 function refreshSendBtn(){
   const b=$('send');
-  if(isLocked())return; // el temporizador controla el texto
-  if(sending){return;}
+  if(sending)return;
+  const until=lockUntilForCurrent();
+  if(until){ // este registro exacto ya se envió hace poco
+    const left=until-Date.now();
+    const m=String(Math.floor(left/60000)).padStart(2,'0'),s=String(Math.floor(left%60000/1000)).padStart(2,'0');
+    b.disabled=true;b.classList.add('locked');
+    b.innerHTML=`⏳ Este registro ya se envió · ${m}:${s}`;
+    return;
+  }
+  b.classList.remove('locked');
   if(formValid()){b.disabled=false;b.textContent='📤 Enviar y subir a Drive';}
-  else{b.disabled=true;b.classList.remove('locked');
+  else{b.disabled=true;
     b.textContent=files.length?'Completa los campos obligatorios':'Agrega al menos un documento';}
 }
 
@@ -567,7 +582,7 @@ function fileName(fecha,area,division,cuadrilla,idx,ext){
   const now=new Date();
   const hhmmss=[now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0')).join('');
   // Incluye ÁREA porque una misma división (p.ej. "ON Negocios") existe en 2 áreas.
-  return `${tipo}_${fecha}_${slug(area)}_${slug(division)}_${slug(cuadrilla)}_${hhmmss}_${String(idx+1).padStart(2,'0')}.${ext||'jpg'}`;
+  return `${tipo}_${fecha}_${slug(area)}_${slug(division)}_Cuadrilla-${slug(cuadrilla)}_${hhmmss}_${String(idx+1).padStart(2,'0')}.${ext||'jpg'}`;
 }
 
 /* ============================================================
@@ -622,8 +637,9 @@ $('form').addEventListener('submit',async e=>{
   e.preventDefault();
   REQUIRED.forEach(validateField);
   if(!formValid()){toast('err','Revisa los campos obligatorios y agrega documentos.');return;}
-  if(isLocked()||sending)return;
+  if(lockUntilForCurrent()||sending)return;
 
+  const sig=currentSignature();   // identidad de ESTE registro (para el candado anti-duplicados)
   sending=true;const b=$('send');b.disabled=true;b.innerHTML='<span class="spin"></span> Procesando…';
   try{
     const payload=await buildPayload();
@@ -639,13 +655,13 @@ $('form').addEventListener('submit',async e=>{
     files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();
     localStorage.removeItem('draft');
     sending=false;
-    await setLock();            // candado de 10 minutos
+    await addLock(sig);         // bloquea SOLO este registro por 10 min
   }catch(err){
     sending=false;
     // si falla la red pese a estar "online", encolar para no perder el trabajo
     try{const payload=await buildPayload();await queuePayload(payload);
       toast('err','No se pudo subir ahora ('+err.message+'). Guardado <b>cifrado en cola</b> para reintentar.',9000);
-      files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();await setLock();
+      files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();await addLock(sig);
     }catch(e2){toast('err','Error al enviar: '+err.message);refreshSendBtn();}
   }
   updateUI();
@@ -672,9 +688,10 @@ function hideToast(){$('toast').classList.remove('show');}
   if(!endpointReady())$('cfgBanner').hidden=false;
   fillAreas();
   await loadDraft();
-  await restoreLock();
+  await loadLocks();
   REQUIRED.forEach(id=>{if($(id).value.trim())validateField(id);});
   renderThumbs();updateUI();netStatus();updateQueuePill();
+  setInterval(refreshSendBtn,1000);   // actualiza la cuenta atrás del candado y lo libera al vencer
   if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 })();
 </script>
