@@ -57,6 +57,10 @@ cuadrillas lo abran desde el teléfono. Ver *Parte 2*.
 3. Borra el contenido y pega el código de [`apps-script/Codigo.gs`](apps-script/Codigo.gs).
 4. Reemplaza `ROOT_FOLDER_ID` por el ID del paso 1.
    *(Opcional)* crea una Google Sheet, copia su ID en `LOG_SHEET_ID` para llevar un registro.
+   > 🔗 **Integración con el Panel SSOMA:** el `doGet?action=registros` de `Codigo.gs` devuelve los
+   > registros de esa hoja `Registros`, y la pestaña *ATS · Charla 5 min* del panel los grafica. Para que
+   > el panel muestre datos reales (no demo), **`LOG_SHEET_ID` debe estar configurado** y el backend
+   > re-desplegado; luego pega esta URL `/exec` en `CONFIG.ATS_ENDPOINT_URL` del panel.
 5. **Implementar › Nueva implementación › Aplicación web**:
    - *Ejecutar como:* **Yo**
    - *Quién tiene acceso:* **Cualquier usuario**

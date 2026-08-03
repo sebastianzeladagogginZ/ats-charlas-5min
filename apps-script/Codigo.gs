@@ -29,9 +29,63 @@ var LOG_SHEET_ID   = '';   // (opcional) ID de una Google Sheet para el registro
 var LOG_SHEET_NAME = 'Registros';
 /* ========================================================== */
 
-function doGet() {
+function doGet(e) {
+  // El Panel SSOMA consume ?action=registros para visualizar el llenado de ATS / Charla.
+  var action = (e && e.parameter && e.parameter.action) || '';
+  if (action === 'registros') {
+    return json({ ok: true, registros: leerRegistros(e) });
+  }
   return json({ ok: true, service: 'ATS/Charla uploader', time: new Date().toISOString() });
 }
+
+/**
+ * Devuelve los últimos registros de llenado (ATS / Charla de 5 min) desde la hoja "Registros".
+ * Requiere LOG_SHEET_ID configurado. Sin hoja → lista vacía (el panel usa su modo demo).
+ * Parámetro opcional ?limit=N (por defecto 1000, más recientes primero).
+ */
+function leerRegistros(e) {
+  if (!LOG_SHEET_ID) return [];
+  try {
+    var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+    var sh = ss.getSheetByName(LOG_SHEET_NAME);
+    if (!sh || sh.getLastRow() < 2) return [];
+    var limit = (e && e.parameter && e.parameter.limit) ? parseInt(e.parameter.limit, 10) : 1000;
+    if (!(limit > 0)) limit = 1000;
+    var lastRow = sh.getLastRow();
+    var startRow = Math.max(2, lastRow - limit + 1);      // solo las últimas N filas
+    var nRows = lastRow - startRow + 1;
+    // Columnas: Recibido, Tipo, Cliente, Circuito, Fecha, Cuadrilla, Área, División, N° archivos, Carpeta, Archivos
+    var values = sh.getRange(startRow, 1, nRows, 11).getValues();
+    var out = [];
+    for (var i = values.length - 1; i >= 0; i--) {         // más reciente primero
+      var r = values[i];
+      out.push({
+        recibido:  fechaTexto(r[0]),
+        tipo:      r[1],
+        cliente:   r[2],
+        circuito:  r[3],
+        fecha:     fechaTexto(r[4]),
+        cuadrilla: r[5],
+        area:      r[6],
+        division:  r[7],
+        archivos:  r[8],
+        carpeta:   r[9]
+      });
+    }
+    return out;
+  } catch (err) {
+    return [];
+  }
+}
+
+/** Normaliza una fecha a 'AAAA-MM-DD' (si es Date) o devuelve el texto tal cual. */
+function fechaTexto(v) {
+  if (v instanceof Date) {
+    return v.getFullYear() + '-' + pad2(v.getMonth() + 1) + '-' + pad2(v.getDate());
+  }
+  return String(v == null ? '' : v);
+}
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
 function doPost(e) {
   try {
