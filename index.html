@@ -127,14 +127,17 @@ body.desktop .drop-hint{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- Toast / resultado ---------- */
-.toast{position:fixed;left:12px;right:12px;bottom:84px;max-width:656px;margin:0 auto;z-index:60;
+/* El aviso va POR ENCIMA de la barra de Enviar y NUNCA bloquea toques
+   (pointer-events:none). Se oculta con opacidad+visibilidad (fiable en móvil).
+   Solo los enlaces dentro reciben clics cuando está visible. */
+.toast{position:fixed;left:12px;right:12px;bottom:calc(96px + env(safe-area-inset-bottom));max-width:656px;margin:0 auto;z-index:60;
   border-radius:12px;padding:13px 15px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);
-  transform:translateY(140%);transition:transform .35s cubic-bezier(.2,.8,.2,1);display:flex;gap:10px;align-items:flex-start}
-.toast.show{transform:translateY(0)}
+  display:none;gap:10px;align-items:flex-start;pointer-events:none}
+.toast.show{display:flex}
 .toast.ok{background:var(--okbg);color:#14532d;border:1px solid #86efac}
 .toast.err{background:var(--badbg);color:#7f1d1d;border:1px solid #fca5a5}
 .toast.info{background:#f0f9ff;color:var(--brand);border:1px solid #bae6fd}
-.toast a{color:inherit;font-weight:800}
+.toast.show a{color:inherit;font-weight:800;pointer-events:auto}
 
 .foot{font-size:11px;color:var(--muted);text-align:center;line-height:1.6;margin-top:4px}
 .foot strong{color:#475569}
@@ -181,7 +184,7 @@ body.desktop .drop-hint{display:block}
 
       <div class="field">
         <label for="cliente">Nombre del cliente <span class="req">*</span></label>
-        <input id="cliente" type="text" inputmode="text" placeholder="Ej: Minera XYZ S.A.">
+        <input id="cliente" type="text" inputmode="text" autocapitalize="characters" style="text-transform:uppercase" placeholder="EJ: MINERA XYZ S.A.">
         <small class="err" data-for="cliente"></small>
       </div>
 
@@ -370,6 +373,7 @@ function updateUI(){
 REQUIRED.forEach(id=>{const el=$(id);
   const h=()=>{if(id==='area')onAreaChange();
     if(id==='cuadrilla'){const c=el.value.replace(/[^0-9]/g,'');if(c!==el.value)el.value=c;} // solo números
+    if(id==='cliente'){const up=el.value.toUpperCase();if(up!==el.value){const p=el.selectionStart;el.value=up;try{el.setSelectionRange(p,p);}catch(e){}}} // siempre mayúsculas
     validateField(id);updateUI();saveDraft();};
   el.addEventListener('input',h);      // texto
   el.addEventListener('change',h);     // selects
