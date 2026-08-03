@@ -1,0 +1,680 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c4a6e">
+<title>ATS y Charla de 5 min · Escaneo y carga a Drive</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<style>
+/* ===========================================================
+   Paleta y estilo tomados del formulario SEG-F-010 (inspecciones)
+   =========================================================== */
+:root{
+  --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --brand:#0c4a6e; --brand2:#0284c7;
+  --ok:#16a34a; --okbg:#dcfce7; --warn:#d97706; --warnbg:#fef3c7;
+  --bad:#dc2626; --badbg:#fee2e2; --na:#64748b; --nabg:#e2e8f0;
+  --bg:#f1f5f9;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+  --radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.45;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:680px;margin:0 auto;padding:0 12px 120px}
+
+/* ---------- Header con degradado + medidor de avance ---------- */
+header{
+  background:linear-gradient(120deg,var(--brand),var(--brand2));
+  color:#fff; box-shadow:var(--shadow); position:sticky; top:0; z-index:20;
+  padding-top:env(safe-area-inset-top);
+}
+header .inner{max-width:680px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+header h1{font-size:15px;font-weight:800;margin:0;letter-spacing:.2px}
+header .sub{font-size:11.5px;opacity:.85;margin-top:2px}
+.gauge{
+  width:58px;height:58px;border-radius:50%;flex:0 0 auto;position:relative;
+  background:conic-gradient(#fff calc(var(--p,0)*1%), rgba(255,255,255,.22) 0);
+  display:grid;place-items:center;transition:background .3s ease;
+}
+.gauge::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#0b4a70}
+.gauge b{position:relative;font-size:14px;font-weight:800}
+.gauge span{position:relative;display:block;font-size:8px;opacity:.85;letter-spacing:.4px;text-align:center;margin-top:-2px}
+
+/* ---------- Barra de estado (conexión / cola) ---------- */
+.status{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;
+  padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.online{color:var(--ok);border-color:#bbf7d0;background:var(--okbg)} .pill.online .dot{background:var(--ok)}
+.pill.offline{color:var(--bad);border-color:#fecaca;background:var(--badbg)} .pill.offline .dot{background:var(--bad)}
+.pill.queue{color:var(--warn);border-color:#fde68a;background:var(--warnbg)}
+.pill button{all:unset;cursor:pointer;text-decoration:underline}
+.pill.enc{color:var(--brand);border-color:#bae6fd;background:#f0f9ff}
+
+/* ---------- Tarjetas ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+.card h2{font-size:13px;font-weight:800;margin:0 0 12px;color:var(--brand);
+  text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:8px}
+.card h2 .n{width:20px;height:20px;border-radius:50%;background:var(--brand);color:#fff;
+  font-size:11px;display:grid;place-items:center;flex:0 0 auto}
+
+/* ---------- Selector de tipo (segmentado) ---------- */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.seg-btn{all:unset;cursor:pointer;text-align:center;padding:12px;border-radius:12px;
+  border:1.5px solid var(--line);font-weight:700;font-size:14px;color:var(--muted);
+  background:var(--panel);transition:.15s;display:flex;flex-direction:column;gap:2px;align-items:center}
+.seg-btn small{font-weight:600;font-size:10.5px;opacity:.8}
+.seg-btn.active{border-color:var(--brand2);background:#f0f9ff;color:var(--brand)}
+.seg-btn:focus-visible{outline:2px solid var(--brand2);outline-offset:2px}
+
+/* ---------- Campos ---------- */
+.field{margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:6px}
+label .req{color:var(--bad);font-weight:800}
+input[type=text],input[type=date],select{
+  width:100%;padding:11px 12px;border-radius:11px;border:1.5px solid var(--line);
+  font-size:15px;color:var(--ink);background:#fff;font-family:inherit;transition:.15s}
+input:focus,select:focus{outline:none;border-color:var(--brand2);box-shadow:0 0 0 3px rgba(2,132,199,.15)}
+input.valid,select.valid{border-color:#86efac}
+input.invalid,select.invalid{border-color:#fca5a5;background:#fff7f7}
+select{appearance:none;-webkit-appearance:none;background-color:#fff;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:38px}
+select:disabled{background-color:#f1f5f9;color:var(--muted);-webkit-text-fill-color:var(--muted);cursor:not-allowed;opacity:1}
+.err{display:block;min-height:14px;font-size:11px;font-weight:600;color:var(--bad);margin-top:4px}
+
+/* ---------- Zona de escaneo / archivos ---------- */
+.scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.scan-btn{all:unset;cursor:pointer;text-align:center;padding:16px 10px;border-radius:12px;
+  border:1.5px dashed var(--brand2);color:var(--brand);background:#f0f9ff;font-weight:700;font-size:13px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;transition:.15s}
+.scan-btn:hover{background:#e0f2fe}
+.scan-btn svg{width:26px;height:26px}
+.scan-btn .lbl{font-size:13.5px}
+.scan-btn small{font-weight:600;font-size:10px;opacity:.7}
+.drop-hint{display:none;font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+body.desktop .drop-hint{display:block}
+#docsCard.drag{outline:2.5px dashed var(--brand2);outline-offset:-6px;background:#f0f9ff}
+#docsCard.drag .drop-hint{color:var(--brand2)}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;margin-top:14px}
+.thumb{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);aspect-ratio:3/4;background:#f8fafc}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .ph{width:100%;height:100%;display:grid;place-items:center;font-size:34px;background:#e2e8f0}
+.thumb .meta{position:absolute;left:0;right:0;bottom:0;background:rgba(15,23,42,.72);color:#fff;
+  font-size:9px;padding:3px 5px;line-height:1.3;font-weight:600}
+.thumb .rm{position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:50%;border:none;
+  background:rgba(220,38,38,.92);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;line-height:1}
+.count-note{font-size:11.5px;color:var(--muted);margin-top:10px}
+
+/* ---------- Botón enviar + candado 10 min ---------- */
+.submit{position:fixed;left:0;right:0;bottom:0;z-index:40;
+  background:var(--panel);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(15,23,42,.10);
+  padding:10px 0 calc(10px + env(safe-area-inset-bottom))}
+#send{width:100%;padding:16px;border-radius:14px;border:none;cursor:pointer;
+  font-size:15.5px;font-weight:800;color:#fff;background:var(--brand);box-shadow:var(--shadow);
+  display:flex;align-items:center;justify-content:center;gap:10px;transition:.15s}
+#send:not(:disabled):hover{background:#0a3d5c}
+#send:disabled{cursor:not-allowed;opacity:.55}
+#send.locked{background:var(--warn);opacity:1;cursor:not-allowed}
+#send .spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;
+  border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- Toast / resultado ---------- */
+.toast{position:fixed;left:12px;right:12px;bottom:84px;max-width:656px;margin:0 auto;z-index:60;
+  border-radius:12px;padding:13px 15px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);
+  transform:translateY(140%);transition:transform .35s cubic-bezier(.2,.8,.2,1);display:flex;gap:10px;align-items:flex-start}
+.toast.show{transform:translateY(0)}
+.toast.ok{background:var(--okbg);color:#14532d;border:1px solid #86efac}
+.toast.err{background:var(--badbg);color:#7f1d1d;border:1px solid #fca5a5}
+.toast.info{background:#f0f9ff;color:var(--brand);border:1px solid #bae6fd}
+.toast a{color:inherit;font-weight:800}
+
+.foot{font-size:11px;color:var(--muted);text-align:center;line-height:1.6;margin-top:4px}
+.foot strong{color:#475569}
+.banner-cfg{background:var(--warnbg);border:1px solid #fde68a;color:#92400e;font-size:12px;
+  padding:10px 12px;border-radius:12px;margin:12px 0;font-weight:600}
+</style>
+
+<header>
+  <div class="inner">
+    <div>
+      <h1>ATS y Charla de 5 minutos</h1>
+      <div class="sub">Escaneo de campo · carga automática a Google Drive</div>
+    </div>
+    <div class="gauge" id="gauge" title="Avance del formulario"><div><b id="gaugePct">0%</b><span>LISTO</span></div></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="status">
+    <span class="pill" id="netPill"><span class="dot"></span><span id="netTxt">Comprobando…</span></span>
+    <span class="pill queue" id="queuePill" hidden><span class="dot"></span><span id="queueTxt">0 en cola</span> · <button type="button" id="flushBtn">reintentar</button></span>
+    <span class="pill enc" title="Los borradores y la cola se guardan cifrados (AES-GCM)">🔒 Cifrado local</span>
+  </div>
+
+  <div class="banner-cfg" id="cfgBanner" hidden>
+    ⚠️ Falta configurar la URL del servidor de Drive. Los envíos se guardarán <b>cifrados en cola</b> y se subirán cuando se configure. Edita <code>CONFIG.endpoint</code> en <code>index.html</code>.
+  </div>
+
+  <form id="form" novalidate autocomplete="off">
+
+    <!-- 1. Tipo de documento -->
+    <div class="card">
+      <h2><span class="n">1</span> Tipo de documento</h2>
+      <div class="seg" id="seg">
+        <button type="button" class="seg-btn active" data-tipo="ATS">ATS<small>Análisis de Trabajo Seguro</small></button>
+        <button type="button" class="seg-btn" data-tipo="Charla-5min">Charla de 5 min<small>Charla de seguridad</small></button>
+      </div>
+    </div>
+
+    <!-- 2. Datos obligatorios -->
+    <div class="card">
+      <h2><span class="n">2</span> Datos del registro</h2>
+
+      <div class="field">
+        <label for="cliente">Nombre del cliente <span class="req">*</span></label>
+        <input id="cliente" type="text" inputmode="text" placeholder="Ej: Minera XYZ S.A.">
+        <small class="err" data-for="cliente"></small>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="circuito">Circuito <span class="req">*</span></label>
+          <input id="circuito" type="text" placeholder="Ej: Circuito 04">
+          <small class="err" data-for="circuito"></small>
+        </div>
+        <div class="field">
+          <label for="fecha">Fecha <span class="req">*</span></label>
+          <input id="fecha" type="date">
+          <small class="err" data-for="fecha"></small>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="cuadrilla">Cuadrilla <span class="req">*</span></label>
+        <input id="cuadrilla" type="text" placeholder="Ej: Cuadrilla A">
+        <small class="err" data-for="cuadrilla"></small>
+      </div>
+
+      <div class="field">
+        <label for="area">Área <span class="req">*</span></label>
+        <select id="area">
+          <option value="" disabled selected>Selecciona un área…</option>
+        </select>
+        <small class="err" data-for="area"></small>
+      </div>
+
+      <div class="field">
+        <label for="division">División <span class="req">*</span></label>
+        <select id="division" disabled>
+          <option value="" disabled selected>Selecciona primero el área…</option>
+        </select>
+        <small class="err" data-for="division"></small>
+      </div>
+    </div>
+
+    <!-- 3. Escaneo -->
+    <div class="card" id="docsCard">
+      <h2><span class="n">3</span> Documentos escaneados <span class="req" style="color:var(--bad)">*</span></h2>
+      <div class="scan-actions">
+        <button type="button" class="scan-btn" id="camBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span class="lbl" id="camLbl">Tomar foto</span>
+          <small id="camHint">con la cámara</small>
+        </button>
+        <button type="button" class="scan-btn" id="fileBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span class="lbl" id="fileLbl">Subir archivos</span>
+          <small id="fileHint">de este dispositivo</small>
+        </button>
+      </div>
+      <div class="drop-hint" id="dropHint">o <strong>arrastra las fotos aquí</strong> desde la computadora</div>
+      <input id="camInput" type="file" accept="image/*" capture="environment" hidden>
+      <input id="fileInput" type="file" accept="image/*" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="count-note" id="fileNote">Sin documentos. Las imágenes se comprimen automáticamente antes de subir.</div>
+    </div>
+
+  </form>
+
+  <div class="foot">
+    <p>🔒 <strong>Protección de datos:</strong> los borradores y los envíos en cola se cifran con <strong>AES-GCM</strong> en tu dispositivo.<br>
+    📴 <strong>Funciona sin conexión:</strong> si no hay internet, el registro queda en cola y se sube solo al reconectar.<br>
+    🗂️ Se guarda en Drive como <strong>Mes › Día › División</strong>, sin carpetas duplicadas.</p>
+  </div>
+</div>
+
+<div class="submit">
+  <div class="wrap" style="padding-bottom:0">
+    <button type="submit" form="form" id="send" disabled>Completa los campos obligatorios</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   CONFIGURACIÓN  — pega aquí la URL del Web App de Apps Script
+   (Implementar > Nueva implementación > Aplicación web > /exec)
+   ============================================================ */
+const CONFIG = {
+  // Backend Apps Script desplegado en la cuenta SSOMA ONI (ssomaoni@gmail.com)
+  // Carpeta raíz en Drive: "ATS y Charlas 2026"
+  endpoint: 'https://script.google.com/macros/s/AKfycbzpT_x5ITn5RZBFfKOALsbMF3wEHAJbr2eS4opmNBUtnpV1zToPYiSh097cF8sr45sb/exec',
+  maxDim: 1600,        // lado máximo de la imagen tras comprimir (px)
+  quality: 0.7,        // calidad JPEG (0–1)
+  lockMinutes: 10,     // bloqueo del botón enviar tras un envío
+  appVersion: 'v1'
+};
+
+/* ---------- Utilidades base64 (soporta datos grandes) ---------- */
+function u8ToB64(u8){let s='';const CH=0x8000;for(let i=0;i<u8.length;i+=CH){s+=String.fromCharCode.apply(null,u8.subarray(i,i+CH));}return btoa(s);}
+const b64ToU8 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+/* ============================================================
+   IndexedDB (clave de cifrado + cola de envíos)
+   ============================================================ */
+const DB_NAME='ats_charla_db', DB_VER=1;
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+  r.onupgradeneeded=e=>{const db=e.target.result;
+    if(!db.objectStoreNames.contains('keys'))db.createObjectStore('keys');
+    if(!db.objectStoreNames.contains('queue'))db.createObjectStore('queue',{keyPath:'id',autoIncrement:true});};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbGet(store,key){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(store);const rq=t.objectStore(store).get(key);rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});}
+async function idbPut(store,val,key){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(store,'readwrite');const rq=key!==undefined?t.objectStore(store).put(val,key):t.objectStore(store).put(val);rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});}
+async function idbAll(store){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(store);const rq=t.objectStore(store).getAll();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);});}
+async function idbDel(store,key){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(store,'readwrite');const rq=t.objectStore(store).delete(key);rq.onsuccess=()=>res();rq.onerror=()=>rej(rq.error);});}
+
+/* ============================================================
+   Cifrado AES-GCM (clave NO exportable, guardada en IndexedDB)
+   Protege borradores y cola en el almacenamiento local.
+   ============================================================ */
+async function getKey(){
+  let k=await idbGet('keys','aes');
+  if(k) return k;
+  k=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  await idbPut('keys',k,'aes');
+  return k;
+}
+async function enc(obj){
+  const key=await getKey();
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const data=new TextEncoder().encode(JSON.stringify(obj));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data));
+  return {iv:u8ToB64(iv),ct:u8ToB64(ct)};
+}
+async function dec(blob){
+  const key=await getKey();
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToU8(blob.iv)},key,b64ToU8(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* ============================================================
+   Estado del formulario
+   ============================================================ */
+const REQUIRED=['cliente','circuito','fecha','cuadrilla','area','division'];
+
+/* Áreas y divisiones (duplicados ya depurados). División depende del Área. */
+const AREAS={
+  'INSPECCIÓN Y DISEÑO':['Inspección y Diseño - Corporativo'],
+  'MANTENIMIENTO':['Mantenimiento - Corporativo','Mantenimiento - Ultra','Mangas Críticas','ON Negocios','Normalización de Red'],
+  'NETWORKING':['Instalaciones - Corporativo','ON-Site - Corporativo'],
+  'PLANTA EXTERNA':['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo']
+};
+
+let tipo='ATS';
+let files=[];               // {id, blob, url, name, kb}
+let fileSeq=0;
+let lockTimer=null;
+const $=id=>document.getElementById(id);
+
+/* ---------- Fecha por defecto: hoy ---------- */
+(function(){const d=new Date();const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;$('fecha').value=iso;})();
+
+/* ---------- Selector de tipo ---------- */
+$('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b)return;
+  document.querySelectorAll('.seg-btn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');tipo=b.dataset.tipo;saveDraft();});
+
+/* ============================================================
+   Validación en tiempo real
+   ============================================================ */
+function validateField(id){
+  const el=$(id), val=(el.value||'').trim();
+  const err=document.querySelector(`.err[data-for="${id}"]`);
+  let msg='';
+  if(!val) msg='Campo obligatorio';
+  else if(id==='fecha'&&isNaN(Date.parse(val))) msg='Fecha inválida';
+  el.classList.toggle('invalid',!!msg);
+  el.classList.toggle('valid',!msg&&!!val);
+  if(err)err.textContent=msg;
+  return !msg;
+}
+function formValid(){return REQUIRED.every(id=>((($(id).value||'').trim())!=='')&&!(id==='fecha'&&isNaN(Date.parse($(id).value))))&&files.length>0;}
+function updateUI(){
+  const done=REQUIRED.filter(id=>(($(id).value||'').trim())!=='').length+(files.length?1:0);
+  const pct=Math.round(done/(REQUIRED.length+1)*100);
+  $('gauge').style.setProperty('--p',pct);$('gaugePct').textContent=pct+'%';
+  refreshSendBtn();
+}
+REQUIRED.forEach(id=>{const el=$(id);
+  const h=()=>{if(id==='area')onAreaChange();validateField(id);updateUI();saveDraft();};
+  el.addEventListener('input',h);      // texto
+  el.addEventListener('change',h);     // selects
+  el.addEventListener('blur',()=>validateField(id));
+});
+
+/* ---------- Desplegables encadenados Área → División ---------- */
+function fillAreas(){
+  const sel=$('area');
+  Object.keys(AREAS).forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;sel.appendChild(o);});
+}
+function populateDivisiones(area,selected){
+  const sel=$('division');
+  sel.innerHTML='';
+  sel.classList.remove('valid','invalid');
+  const err=document.querySelector('.err[data-for="division"]');if(err)err.textContent='';
+  if(!area||!AREAS[area]){
+    sel.innerHTML='<option value="" disabled selected>Selecciona primero el área…</option>';
+    sel.disabled=true;return;
+  }
+  const ph=document.createElement('option');ph.value='';ph.disabled=true;ph.textContent='Selecciona una división…';sel.appendChild(ph);
+  AREAS[area].forEach(d=>{const o=document.createElement('option');o.value=d;o.textContent=d;sel.appendChild(o);});
+  sel.disabled=false;
+  if(selected&&AREAS[area].includes(selected))sel.value=selected;else ph.selected=true;
+}
+function onAreaChange(){populateDivisiones($('area').value);}
+
+/* ============================================================
+   Escaneo + compresión automática de imágenes
+   ============================================================ */
+$('camBtn').addEventListener('click',()=>$('camInput').click());
+$('fileBtn').addEventListener('click',()=>$('fileInput').click());
+$('camInput').addEventListener('change',e=>addFiles(e.target.files));
+$('fileInput').addEventListener('change',e=>addFiles(e.target.files));
+
+/* ---------- Adaptación teléfono / computadora ---------- */
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+if(isTouch){
+  $('camLbl').textContent='Tomar foto';   $('camHint').textContent='con la cámara';
+  $('fileLbl').textContent='Galería';      $('fileHint').textContent='fotos guardadas';
+}else{
+  document.body.classList.add('desktop');
+  $('camLbl').textContent='Cámara web';    $('camHint').textContent='si está disponible';
+  $('fileLbl').textContent='Subir archivos';$('fileHint').textContent='desde la computadora';
+}
+
+/* ---------- Arrastrar y soltar (computadora) ---------- */
+(function(){
+  const zone=$('docsCard'); if(!zone)return;
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,e=>{stop(e);zone.classList.add('drag');}));
+  ['dragleave','dragend'].forEach(ev=>zone.addEventListener(ev,e=>{stop(e);if(!zone.contains(e.relatedTarget))zone.classList.remove('drag');}));
+  zone.addEventListener('drop',e=>{stop(e);zone.classList.remove('drag');
+    const dt=e.dataTransfer; if(dt&&dt.files&&dt.files.length)addFiles(dt.files);});
+})();
+
+// Cede el hilo para que el toast se pinte. Resuelve por rAF O por temporizador
+// (rAF NO se dispara si la pestaña está en segundo plano / pantalla bloqueada),
+// así la compresión nunca se queda esperando un frame que no llega.
+const nextFrame=()=>new Promise(r=>{let done=false;const f=()=>{if(!done){done=true;r();}};requestAnimationFrame(f);setTimeout(f,60);});
+function withTimeout(p,ms,msg){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg||'timeout')),ms))]);}
+
+/* Decodifica con createImageBitmap y, si falla, con <img> (más formatos). */
+async function decodeImage(file){
+  if('createImageBitmap'in window){
+    try{return await createImageBitmap(file,{imageOrientation:'from-image'});}catch(e){}
+    try{return await createImageBitmap(file);}catch(e){}
+  }
+  return await new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();img.decoding='async';
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('No se pudo decodificar'));};
+    img.src=url;
+  });
+}
+/* Comprime a JPEG (máx CONFIG.maxDim). Devuelve {blob,mime,ext}. Lanza si no puede. */
+async function compress(file){
+  const src=await decodeImage(file);
+  const sw=src.width||src.naturalWidth, sh=src.height||src.naturalHeight;
+  if(!sw||!sh){if(src.close)src.close();throw new Error('Imagen sin dimensiones');}
+  const scale=Math.min(1,CONFIG.maxDim/Math.max(sw,sh));
+  const w=Math.max(1,Math.round(sw*scale)), h=Math.max(1,Math.round(sh*scale));
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  c.getContext('2d').drawImage(src,0,0,w,h);
+  if(src.close)src.close();
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',CONFIG.quality));
+  if(!blob)throw new Error('toBlob devolvió null');
+  return {blob,mime:'image/jpeg',ext:'jpg'};
+}
+async function addFiles(list){
+  const arr=[...list].filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(f.name));
+  if(!arr.length){toast('err','Selecciona archivos de imagen.');return;}
+  let ok=0, fallback=0;
+  try{
+    for(let i=0;i<arr.length;i++){
+      const f=arr[i];
+      toast('info',`⏳ Comprimiendo ${i+1} de ${arr.length}…`,0); // 0 = no se oculta solo
+      await nextFrame();                                          // deja que se pinte
+      try{
+        const {blob,mime,ext}=await withTimeout(compress(f),25000,'La imagen tardó demasiado');
+        files.push({id:++fileSeq,blob,url:URL.createObjectURL(blob),name:f.name,mime,ext,compressed:true,
+                    kb:Math.round(blob.size/1024),origKb:Math.round(f.size/1024)});
+        ok++;
+      }catch(err){
+        // Nunca perder el documento: se adjunta el original sin comprimir.
+        const ext=((f.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,''))||'jpg';
+        files.push({id:++fileSeq,blob:f,url:URL.createObjectURL(f),name:f.name,mime:f.type||'application/octet-stream',ext,compressed:false,
+                    kb:Math.round(f.size/1024),origKb:Math.round(f.size/1024)});
+        fallback++;
+      }
+    }
+  } finally {
+    $('camInput').value='';$('fileInput').value='';
+    renderThumbs();updateUI();
+    if(fallback&&ok) toast('info',`✅ ${ok} comprimida(s) · ${fallback} adjuntada(s) sin comprimir (formato no soportado, p. ej. HEIC).`,8000);
+    else if(fallback) toast('info',`📎 Adjuntada sin comprimir: el navegador no pudo procesar el formato (p. ej. HEIC de iPhone). Se subirá igual.`,9000);
+    else toast('ok',`✅ ${ok} imagen(es) lista(s).`);
+  }
+}
+function renderThumbs(){
+  const box=$('thumbs');box.innerHTML='';
+  files.forEach(f=>{
+    const d=document.createElement('div');d.className='thumb';
+    const img=document.createElement('img');img.alt=f.name;img.src=f.url;
+    img.onerror=()=>{img.remove();const ph=document.createElement('div');ph.className='ph';ph.textContent='📄';d.prepend(ph);};
+    const meta=document.createElement('div');meta.className='meta';
+    meta.innerHTML=f.compressed
+      ? `${f.kb} KB<br><span style="opacity:.75">antes ${f.origKb} KB</span>`
+      : `${f.kb} KB<br><span style="opacity:.95;color:#fde68a">sin comprimir</span>`;
+    const rm=document.createElement('button');rm.type='button';rm.className='rm';rm.dataset.id=f.id;rm.setAttribute('aria-label','Quitar');rm.innerHTML='&times;';
+    d.append(img,meta,rm);
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.rm').forEach(b=>b.addEventListener('click',()=>{
+    const id=+b.dataset.id;const f=files.find(x=>x.id===id);if(f)URL.revokeObjectURL(f.url);
+    files=files.filter(x=>x.id!==id);renderThumbs();updateUI();
+  }));
+  const n=files.length;
+  $('fileNote').textContent=n?`${n} documento(s) listos · se comprimen automáticamente a JPEG`:'Sin documentos. Las imágenes se comprimen automáticamente antes de subir.';
+}
+
+/* ============================================================
+   Borrador cifrado (auto-guardado / restauración)
+   ============================================================ */
+let draftT=null;
+function saveDraft(){clearTimeout(draftT);draftT=setTimeout(async()=>{
+  const d={tipo};REQUIRED.forEach(id=>d[id]=$(id).value);
+  try{localStorage.setItem('draft',JSON.stringify(await enc(d)));}catch(e){}
+},400);}
+async function loadDraft(){
+  const raw=localStorage.getItem('draft');if(!raw)return;
+  try{const d=await dec(JSON.parse(raw));
+    if(d.tipo){tipo=d.tipo;document.querySelectorAll('.seg-btn').forEach(x=>x.classList.toggle('active',x.dataset.tipo===tipo));}
+    REQUIRED.forEach(id=>{
+      if(id==='area'||id==='division')return;            // se restauran aparte (encadenados)
+      if(d[id]!=null&&(id!=='fecha'||d[id]))$(id).value=d[id];
+    });
+    if(d.area&&AREAS[d.area]){$('area').value=d.area;populateDivisiones(d.area,d.division);}
+  }catch(e){}
+}
+
+/* ============================================================
+   Bloqueo de 10 minutos del botón enviar (persistente y cifrado)
+   ============================================================ */
+async function setLock(){const until=Date.now()+CONFIG.lockMinutes*60000;
+  localStorage.setItem('lockUntil',JSON.stringify(await enc({until})));startLockTimer(until);}
+async function restoreLock(){const raw=localStorage.getItem('lockUntil');if(!raw)return;
+  try{const {until}=await dec(JSON.parse(raw));if(until>Date.now())startLockTimer(until);else localStorage.removeItem('lockUntil');}catch(e){}}
+function startLockTimer(until){
+  clearInterval(lockTimer);
+  const tick=()=>{const left=until-Date.now();
+    if(left<=0){clearInterval(lockTimer);localStorage.removeItem('lockUntil');refreshSendBtn();return;}
+    const m=String(Math.floor(left/60000)).padStart(2,'0'),s=String(Math.floor(left%60000/1000)).padStart(2,'0');
+    const b=$('send');b.disabled=true;b.classList.add('locked');b.classList.remove();b.classList.add('locked');
+    b.innerHTML=`⏳ Espera ${m}:${s} para enviar de nuevo`;};
+  tick();lockTimer=setInterval(tick,1000);
+}
+function isLocked(){return $('send').classList.contains('locked');}
+
+/* ---------- Estado del botón enviar ---------- */
+function refreshSendBtn(){
+  const b=$('send');
+  if(isLocked())return; // el temporizador controla el texto
+  if(sending){return;}
+  if(formValid()){b.disabled=false;b.textContent='📤 Enviar y subir a Drive';}
+  else{b.disabled=true;b.classList.remove('locked');
+    b.textContent=files.length?'Completa los campos obligatorios':'Agrega al menos un documento';}
+}
+
+/* ============================================================
+   Nombres de carpeta y archivo (formato estándar de fecha)
+   ============================================================ */
+const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const slug=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+function folderNames(fecha){const [y,m,d]=fecha.split('-');
+  return {mes:`${y}-${m} ${MESES[+m-1]}`, dia:`${y}-${m}-${d}`};}
+function fileName(fecha,area,division,cuadrilla,idx,ext){
+  const now=new Date();
+  const hhmmss=[now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0')).join('');
+  // Incluye ÁREA porque una misma división (p.ej. "ON Negocios") existe en 2 áreas.
+  return `${tipo}_${fecha}_${slug(area)}_${slug(division)}_${slug(cuadrilla)}_${hhmmss}_${String(idx+1).padStart(2,'0')}.${ext||'jpg'}`;
+}
+
+/* ============================================================
+   Envío / cola offline
+   ============================================================ */
+let sending=false;
+async function buildPayload(){
+  const fecha=$('fecha').value, area=$('area').value.trim(), division=$('division').value.trim(), cuadrilla=$('cuadrilla').value.trim();
+  const fn=folderNames(fecha);
+  const payloadFiles=[];
+  for(let i=0;i<files.length;i++){
+    const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(files[i].blob);});
+    payloadFiles.push({name:fileName(fecha,area,division,cuadrilla,i,files[i].ext),mime:files[i].mime||'image/jpeg',dataB64:b64});
+  }
+  return {
+    app:CONFIG.appVersion,
+    meta:{tipo,cliente:$('cliente').value.trim(),circuito:$('circuito').value.trim(),
+          fecha,cuadrilla,area:$('area').value.trim(),division,enviadoEn:new Date().toISOString()},
+    mesFolder:fn.mes, diaFolder:fn.dia, division,
+    files:payloadFiles
+  };
+}
+async function sendPayload(payload){
+  const res=await fetch(CONFIG.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+  const data=await res.json();
+  if(!data.ok) throw new Error(data.error||'Error del servidor');
+  return data;
+}
+async function queuePayload(payload){await idbPut('queue',{blob:await enc(payload),ts:Date.now()});await updateQueuePill();}
+async function updateQueuePill(){
+  const n=(await idbAll('queue')).length;
+  $('queuePill').hidden=n===0;$('queueTxt').textContent=`${n} en cola`;
+}
+async function flushQueue(silent){
+  if(!navigator.onLine||!endpointReady())return;
+  const all=await idbAll('queue');if(!all.length)return;
+  if(!silent)toast('info',`Subiendo ${all.length} registro(s) en cola…`);
+  let ok=0;
+  for(const rec of all){
+    try{const p=await dec(rec.blob);await sendPayload(p);await idbDel('queue',rec.id);ok++;}
+    catch(e){break;} // conserva el resto para reintentar
+  }
+  await updateQueuePill();
+  if(ok&&!silent)toast('ok',`${ok} registro(s) subidos a Drive.`);
+}
+$('flushBtn').addEventListener('click',()=>flushQueue(false));
+
+const endpointReady=()=>CONFIG.endpoint&&!CONFIG.endpoint.includes('PEGA_AQUI');
+
+/* ---------- Envío del formulario ---------- */
+$('form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  REQUIRED.forEach(validateField);
+  if(!formValid()){toast('err','Revisa los campos obligatorios y agrega documentos.');return;}
+  if(isLocked()||sending)return;
+
+  sending=true;const b=$('send');b.disabled=true;b.innerHTML='<span class="spin"></span> Procesando…';
+  try{
+    const payload=await buildPayload();
+    if(navigator.onLine&&endpointReady()){
+      b.innerHTML='<span class="spin"></span> Subiendo a Drive…';
+      const data=await sendPayload(payload);
+      toast('ok',`✅ Subido a Drive · ${payload.files.length} archivo(s) en <b>${payload.division}</b>.`+(data.folder?` <a href="${data.folder}" target="_blank" rel="noopener">Abrir carpeta</a>`:''),9000);
+    }else{
+      await queuePayload(payload);
+      toast('info','📴 Sin conexión: registro <b>cifrado y en cola</b>. Se subirá automáticamente al reconectar.',9000);
+    }
+    // limpieza post-envío
+    files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();
+    localStorage.removeItem('draft');
+    sending=false;
+    await setLock();            // candado de 10 minutos
+  }catch(err){
+    sending=false;
+    // si falla la red pese a estar "online", encolar para no perder el trabajo
+    try{const payload=await buildPayload();await queuePayload(payload);
+      toast('err','No se pudo subir ahora ('+err.message+'). Guardado <b>cifrado en cola</b> para reintentar.',9000);
+      files.forEach(f=>URL.revokeObjectURL(f.url));files=[];renderThumbs();await setLock();
+    }catch(e2){toast('err','Error al enviar: '+err.message);refreshSendBtn();}
+  }
+  updateUI();
+});
+
+/* ============================================================
+   Conexión / arranque
+   ============================================================ */
+function netStatus(){const on=navigator.onLine;const p=$('netPill');
+  p.className='pill '+(on?'online':'offline');
+  $('netTxt').textContent=on?'En línea':'Sin conexión';
+  if(on)flushQueue(true);}
+window.addEventListener('online',netStatus);
+window.addEventListener('offline',netStatus);
+
+/* ---------- Toasts ---------- */
+let toastT=null;
+function toast(type,html,ms=4000){const t=$('toast');t.className='toast '+type+' show';t.innerHTML=html;
+  clearTimeout(toastT);if(ms)toastT=setTimeout(hideToast,ms);}
+function hideToast(){$('toast').classList.remove('show');}
+
+/* ---------- Init ---------- */
+(async function init(){
+  if(!endpointReady())$('cfgBanner').hidden=false;
+  fillAreas();
+  await loadDraft();
+  await restoreLock();
+  REQUIRED.forEach(id=>{if($(id).value.trim())validateField(id);});
+  renderThumbs();updateUI();netStatus();updateQueuePill();
+  if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+})();
+</script>

@@ -1,0 +1,15 @@
+{
+  "name": "ATS y Charla de 5 min · Escaneo",
+  "short_name": "ATS Escaneo",
+  "description": "Escaneo de ATS y charlas de 5 minutos con carga automática a Google Drive.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c4a6e",
+  "theme_color": "#0c4a6e",
+  "lang": "es",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
