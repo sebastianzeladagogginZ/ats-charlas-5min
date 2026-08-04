@@ -88,6 +88,9 @@ select{appearance:none;-webkit-appearance:none;background-color:#fff;
   background-repeat:no-repeat;background-position:right 12px center;padding-right:38px}
 select:disabled{background-color:#f1f5f9;color:var(--muted);-webkit-text-fill-color:var(--muted);cursor:not-allowed;opacity:1}
 .err{display:block;min-height:14px;font-size:11px;font-weight:600;color:var(--bad);margin-top:4px}
+label.chk{display:flex;align-items:center;gap:8px;font-weight:600;color:#475569;margin:8px 0 0;cursor:pointer;font-size:12.5px}
+label.chk input{width:16px;height:16px;accent-color:var(--brand2);margin:0;flex:0 0 auto}
+.opt-note{color:var(--muted);font-weight:600;font-size:11px}
 
 /* ---------- Zona de escaneo / archivos ---------- */
 .scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -183,15 +186,16 @@ body.desktop .drop-hint{display:block}
       <h2><span class="n">2</span> Datos del registro</h2>
 
       <div class="field">
-        <label for="cliente">Nombre del cliente <span class="req">*</span></label>
+        <label for="cliente"><span id="clienteLbl">Nombre del cliente</span> <span class="req">*</span></label>
         <input id="cliente" type="text" inputmode="text" autocapitalize="characters" style="text-transform:uppercase" placeholder="EJ: MINERA XYZ S.A.">
+        <label class="chk"><input type="checkbox" id="noAplica"> No aplica · evidencia sin cliente (describe la actividad)</label>
         <small class="err" data-for="cliente"></small>
       </div>
 
       <div class="grid2">
         <div class="field">
-          <label for="circuito">Circuito <span class="req">*</span></label>
-          <input id="circuito" type="text" placeholder="Ej: Circuito 04">
+          <label for="circuito">Circuito <span class="req" id="circuitoReq">*</span> <span class="opt-note" id="circuitoOpt" style="display:none">(opcional)</span></label>
+          <input id="circuito" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Ej: 04 (solo números)">
           <small class="err" data-for="circuito"></small>
         </div>
         <div class="field">
@@ -350,35 +354,49 @@ $('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b
 /* ============================================================
    Validación en tiempo real
    ============================================================ */
+/* Campos obligatorios según el modo: si "No aplica" (sin cliente) → el circuito es opcional. */
+function activeRequired(){return $('noAplica').checked?REQUIRED.filter(id=>id!=='circuito'):REQUIRED;}
 function validateField(id){
   const el=$(id), val=(el.value||'').trim();
   const err=document.querySelector(`.err[data-for="${id}"]`);
   let msg='';
-  if(!val) msg='Campo obligatorio';
+  if(!val){ if(activeRequired().includes(id)) msg='Campo obligatorio'; }
   else if(id==='fecha'&&isNaN(Date.parse(val))) msg='Fecha inválida';
-  else if(id==='cuadrilla'&&!/^\d+$/.test(val)) msg='Solo números';
+  else if((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(val)) msg='Solo números';
   el.classList.toggle('invalid',!!msg);
   el.classList.toggle('valid',!msg&&!!val);
   if(err)err.textContent=msg;
   return !msg;
 }
-function formValid(){return REQUIRED.every(id=>{const v=($(id).value||'').trim();
-  return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!(id==='cuadrilla'&&!/^\d+$/.test(v));})&&files.length>0;}
+function formValid(){return activeRequired().every(id=>{const v=($(id).value||'').trim();
+  return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(v));})&&files.length>0;}
 function updateUI(){
-  const done=REQUIRED.filter(id=>(($(id).value||'').trim())!=='').length+(files.length?1:0);
-  const pct=Math.round(done/(REQUIRED.length+1)*100);
+  const req=activeRequired();
+  const done=req.filter(id=>(($(id).value||'').trim())!=='').length+(files.length?1:0);
+  const pct=Math.round(done/(req.length+1)*100);
   $('gauge').style.setProperty('--p',pct);$('gaugePct').textContent=pct+'%';
   refreshSendBtn();
 }
 REQUIRED.forEach(id=>{const el=$(id);
   const h=()=>{if(id==='area')onAreaChange();
-    if(id==='cuadrilla'){const c=el.value.replace(/[^0-9]/g,'');if(c!==el.value)el.value=c;} // solo números
+    if(id==='cuadrilla'||id==='circuito'){const c=el.value.replace(/[^0-9]/g,'');if(c!==el.value){const p=el.selectionStart;el.value=c;try{el.setSelectionRange(p,p);}catch(e){}}} // solo números
     if(id==='cliente'){const up=el.value.toUpperCase();if(up!==el.value){const p=el.selectionStart;el.value=up;try{el.setSelectionRange(p,p);}catch(e){}}} // siempre mayúsculas
     validateField(id);updateUI();saveDraft();};
   el.addEventListener('input',h);      // texto
   el.addEventListener('change',h);     // selects
   el.addEventListener('blur',()=>validateField(id));
 });
+
+/* ---------- "No aplica": evidencia sin cliente → se escribe la actividad ---------- */
+function applyNoAplica(on){
+  $('clienteLbl').textContent = on ? 'Actividad específica a realizar' : 'Nombre del cliente';
+  $('cliente').placeholder    = on ? 'EJ: MANTENIMIENTO PREVENTIVO DE MANGAS' : 'EJ: MINERA XYZ S.A.';
+  $('circuitoReq').style.display = on ? 'none' : '';   // sin cliente → circuito opcional
+  $('circuitoOpt').style.display = on ? '' : 'none';
+  $('circuito').placeholder      = on ? 'Opcional (solo números)' : 'Ej: 04 (solo números)';
+  validateField('cliente');validateField('circuito');updateUI();
+}
+$('noAplica').addEventListener('change',()=>{applyNoAplica($('noAplica').checked);saveDraft();});
 
 /* ---------- Desplegables encadenados Área → División ---------- */
 function fillAreas(){
@@ -523,7 +541,7 @@ function renderThumbs(){
    ============================================================ */
 let draftT=null;
 function saveDraft(){clearTimeout(draftT);draftT=setTimeout(async()=>{
-  const d={tipo};REQUIRED.forEach(id=>d[id]=$(id).value);
+  const d={tipo,noAplica:$('noAplica').checked};REQUIRED.forEach(id=>d[id]=$(id).value);
   try{localStorage.setItem('draft',JSON.stringify(await enc(d)));}catch(e){}
 },400);}
 async function loadDraft(){
@@ -535,6 +553,7 @@ async function loadDraft(){
       if(d[id]!=null&&(id!=='fecha'||d[id]))$(id).value=d[id];
     });
     if(d.area&&AREAS[d.area]){$('area').value=d.area;populateDivisiones(d.area,d.division);}
+    if(d.noAplica){$('noAplica').checked=true;applyNoAplica(true);}
   }catch(e){}
 }
 
@@ -547,7 +566,7 @@ async function loadDraft(){
 let locks = {}; // { firma: timestampHasta }
 function currentSignature(){
   const n=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
-  return [tipo, n($('cliente').value), n($('circuito').value), $('fecha').value,
+  return [tipo, $('noAplica').checked?'NA':'CLI', n($('cliente').value), n($('circuito').value), $('fecha').value,
           n($('cuadrilla').value), n($('area').value), n($('division').value)].join('|');
 }
 function pruneLocks(){const now=Date.now();for(const k in locks)if(locks[k]<=now)delete locks[k];}
@@ -595,6 +614,9 @@ function fileName(fecha,area,division,cuadrilla,idx,ext){
 let sending=false;
 async function buildPayload(){
   const fecha=$('fecha').value, area=$('area').value.trim(), division=$('division').value.trim(), cuadrilla=$('cuadrilla').value.trim();
+  const noAplica=$('noAplica').checked;
+  const clienteTxt=$('cliente').value.trim();
+  const cliente=noAplica?('NO APLICA - '+clienteTxt):clienteTxt;   // sin cliente → se guarda la actividad
   const fn=folderNames(fecha);
   const payloadFiles=[];
   for(let i=0;i<files.length;i++){
@@ -605,8 +627,8 @@ async function buildPayload(){
   return {
     app:CONFIG.appVersion,
     uploadId,                       // identifica el envío: permite reintentar SIN duplicar en Drive
-    meta:{tipo,cliente:$('cliente').value.trim(),circuito:$('circuito').value.trim(),
-          fecha,cuadrilla,area:$('area').value.trim(),division,enviadoEn:new Date().toISOString()},
+    meta:{tipo,cliente,circuito:$('circuito').value.trim(),
+          fecha,cuadrilla,area,division,enviadoEn:new Date().toISOString()},
     mesFolder:fn.mes, diaFolder:fn.dia, division,
     files:payloadFiles
   };

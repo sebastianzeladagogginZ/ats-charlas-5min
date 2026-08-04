@@ -37,6 +37,8 @@ con *"Añadir a pantalla de inicio"*. La *Parte 2* queda como referencia.
 |---|---|
 | Campos obligatorios: cliente, circuito, fecha, cuadrilla, área, división | Validación **en tiempo real** con medidor de avance |
 | Área y División como **menús desplegables encadenados** (sin duplicados) | Eliges el Área y la División se filtra sola (definido en `AREAS` dentro de `index.html`) |
+| **Evidencia sin cliente** (trabajo no ligado a un cliente) | Casilla **"No aplica"**: el campo *Cliente* pasa a *Actividad específica a realizar* (se guarda como `NO APLICA - …`) y el *Circuito* queda opcional |
+| **Circuito solo numérico** | El campo *Circuito* acepta únicamente números; las letras se descartan al escribir |
 | Carga automática a Drive | Backend **Google Apps Script** (`apps-script/Codigo.gs`) |
 | Jerarquía **Mes › Día › División** | `getOrCreateFolder()` reutiliza carpetas existentes |
 | Varias cuadrillas, mismo día/división → misma carpeta, sin duplicados | `getFoldersByName` + **`LockService`** (creación serializada) |
