@@ -82,3 +82,23 @@ function _backfill(dryRun){
   sample.forEach(function (s) { Logger.log('  · ' + s); });
   return msg;
 }
+
+/**
+ * Reinicia el estado de revisión de TODAS las filas a 'Pendiente' (limpia RevisadoPor,
+ * RevisadoEn y MensajeTecnico). Útil para dejar la hoja lista para que los jefes revisen
+ * desde cero (p. ej. tras una prueba). NO borra ni mueve archivos de Drive.
+ */
+function resetEstados() {
+  var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+  var sh = ss.getSheetByName(LOG_SHEET_NAME);
+  if (!sh || sh.getLastRow() < 2) { Logger.log('Sin filas.'); return 'Sin filas.'; }
+  ensureReviewHeader(sh);
+  var n = sh.getLastRow() - 1;
+  var estados = [], resto = [];
+  for (var i = 0; i < n; i++) { estados.push(['Pendiente']); resto.push(['', '', '']); }
+  sh.getRange(2, 12, n, 1).setValues(estados);   // Estado = Pendiente
+  sh.getRange(2, 13, n, 3).setValues(resto);     // RevisadoPor / RevisadoEn / MensajeTecnico vacíos
+  var msg = 'Reseteadas ' + n + ' filas a Pendiente.';
+  Logger.log(msg);
+  return msg;
+}
