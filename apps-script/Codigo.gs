@@ -27,6 +27,11 @@
 var ROOT_FOLDER_ID = '16M5ZqMyRon7Xaxm461FT0B_TTEx00RPK'; // carpeta "ATS y Charlas 2026" (SSOMA ONI)
 var LOG_SHEET_ID   = '1ptmnCGfCHZX5RvWSg0cOczbKzYxNgsDooF_BbVg04fc';   // Sheet "ATS y Charlas 2026 - Registros" (alimenta el Panel SSOMA)
 var LOG_SHEET_NAME = 'Registros';
+/* Token compartido para las acciones de revisión (aprobar/anular) del panel.
+   Es una barrera básica: el panel lo envía en cada acción. NOTA: al viajar en el
+   cliente del panel NO es un secreto fuerte; para uso interno (panel con DNI) es
+   suficiente. Para blindarlo del todo habría que validar la identidad server-side. */
+var REVIEW_TOKEN = 'oni-ssoma-2026-review';
 /* ========================================================== */
 
 function doGet(e) {
@@ -54,22 +59,28 @@ function leerRegistros(e) {
     var lastRow = sh.getLastRow();
     var startRow = Math.max(2, lastRow - limit + 1);      // solo las últimas N filas
     var nRows = lastRow - startRow + 1;
-    // Columnas: Recibido, Tipo, Cliente, Circuito, Fecha, Cuadrilla, Área, División, N° archivos, Carpeta, Archivos
-    var values = sh.getRange(startRow, 1, nRows, 11).getValues();
+    // Cols 1-11: Recibido, Tipo, Cliente, Circuito, Fecha, Cuadrilla, Área, División, N° archivos, Carpeta, Archivos
+    // Cols 12-15 (revisión): Estado, RevisadoPor, RevisadoEn, MensajeTecnico (pueden no existir en hojas viejas).
+    var lastCol = Math.max(11, sh.getLastColumn());
+    var values = sh.getRange(startRow, 1, nRows, lastCol).getValues();
     var out = [];
     for (var i = values.length - 1; i >= 0; i--) {         // más reciente primero
       var r = values[i];
       out.push({
-        recibido:  fechaTexto(r[0]),
-        tipo:      r[1],
-        cliente:   r[2],
-        circuito:  r[3],
-        fecha:     fechaTexto(r[4]),
-        cuadrilla: r[5],
-        area:      r[6],
-        division:  r[7],
-        archivos:  r[8],
-        carpeta:   r[9]
+        recibido:    fechaTexto(r[0]),
+        tipo:        r[1],
+        cliente:     r[2],
+        circuito:    r[3],
+        fecha:       fechaTexto(r[4]),
+        cuadrilla:   r[5],
+        area:        r[6],
+        division:    r[7],
+        archivos:    r[8],
+        carpeta:     r[9],
+        estado:      String(r[11] || 'Pendiente'),   // col 12
+        revisadoPor: String(r[12] || ''),            // col 13
+        revisadoEn:  fechaTexto(r[13]),              // col 14
+        mensaje:     String(r[14] || '')             // col 15 (nota al técnico si se anuló)
       });
     }
     return out;
@@ -91,6 +102,10 @@ function fechaTexto(v) {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    // Acciones de revisión desde el panel (aprobar / anular). No llevan archivos.
+    if (data && (data.action === 'ats_aprobar' || data.action === 'ats_anular')) {
+      return revisarRegistro(data);
+    }
     if (!data || !data.files || !data.files.length) {
       return json({ ok: false, error: 'Sin archivos en la solicitud.' });
     }
@@ -179,14 +194,81 @@ function logToSheet(meta, folderUrl, saved) {
     var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
     var sh = ss.getSheetByName(LOG_SHEET_NAME) || ss.insertSheet(LOG_SHEET_NAME);
     if (sh.getLastRow() === 0) {
-      sh.appendRow(['Recibido', 'Tipo', 'Cliente', 'Circuito', 'Fecha', 'Cuadrilla', 'Área', 'División', 'N° archivos', 'Carpeta', 'Archivos']);
+      sh.appendRow(['Recibido', 'Tipo', 'Cliente', 'Circuito', 'Fecha', 'Cuadrilla', 'Área', 'División', 'N° archivos', 'Carpeta', 'Archivos', 'Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico']);
     }
+    ensureReviewHeader(sh);
     sh.appendRow([
       new Date(), meta.tipo || '', meta.cliente || '', meta.circuito || '', meta.fecha || '',
       meta.cuadrilla || '', meta.area || '', meta.division || '',
-      saved.length, folderUrl, saved.map(function (s) { return s.name; }).join(', ')
+      saved.length, folderUrl, saved.map(function (s) { return s.name; }).join(', '),
+      'Pendiente', '', '', ''   // Estado inicial: por revisar
     ]);
   } catch (e) { /* el registro no debe romper la carga */ }
+}
+
+/**
+ * REVISIÓN POR ÁREA — aprobar o anular un registro de ATS/Charla desde el panel.
+ * data: { action:'ats_aprobar'|'ats_anular', token, carpeta, revisadoPor, mensaje? }
+ *   - Aprobar: Estado='Aprobado'.
+ *   - Anular : Estado='Anulado' + guarda el mensaje al técnico y envía a la PAPELERA
+ *              de Drive los archivos de esa carpeta (recuperables ~30 días).
+ * Barrera básica por REVIEW_TOKEN (uso interno; ver nota en la constante).
+ * Identifica la fila por la URL de carpeta (columna 10), la más reciente con esa URL.
+ */
+function revisarRegistro(data) {
+  if (!LOG_SHEET_ID) return json({ ok: false, error: 'Sin hoja configurada.' });
+  if (String(data.token || '') !== REVIEW_TOKEN) return json({ ok: false, error: 'no_autorizado' });
+  var carpeta = String(data.carpeta || '').trim();
+  if (!carpeta) return json({ ok: false, error: 'Falta la carpeta del registro.' });
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e0) {}
+  try {
+    var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+    var sh = ss.getSheetByName(LOG_SHEET_NAME);
+    if (!sh || sh.getLastRow() < 2) return json({ ok: false, error: 'Sin registros.' });
+    ensureReviewHeader(sh);
+    var last = sh.getLastRow();
+    var urls = sh.getRange(2, 10, last - 1, 1).getValues();     // columna Carpeta
+    var fila = -1;
+    for (var i = urls.length - 1; i >= 0; i--) {                // la fila más reciente con esa carpeta
+      if (String(urls[i][0]) === carpeta) { fila = i + 2; break; }
+    }
+    if (fila < 0) return json({ ok: false, error: 'Registro no encontrado.' });
+
+    var anular = (data.action === 'ats_anular');
+    sh.getRange(fila, 12).setValue(anular ? 'Anulado' : 'Aprobado');
+    sh.getRange(fila, 13).setValue(String(data.revisadoPor || ''));
+    sh.getRange(fila, 14).setValue(new Date());
+    sh.getRange(fila, 15).setValue(anular ? String(data.mensaje || '') : '');
+
+    var papelera = 0;
+    if (anular) { papelera = trashCarpeta(carpeta); }
+    return json({ ok: true, estado: anular ? 'Anulado' : 'Aprobado', archivosPapelera: papelera });
+  } catch (err) {
+    return json({ ok: false, error: String(err && err.message || err) });
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+/** Envía a la papelera los archivos dentro de la carpeta (identificada por su URL). */
+function trashCarpeta(url) {
+  try {
+    var m = String(url).match(/[-A-Za-z0-9_]{25,}/);   // ID de la carpeta desde la URL de Drive
+    if (!m) return 0;
+    var folder = DriveApp.getFolderById(m[0]);
+    var it = folder.getFiles(), n = 0;
+    while (it.hasNext()) { it.next().setTrashed(true); n++; }   // a la papelera (recuperable ~30 días)
+    return n;
+  } catch (e) { return 0; }
+}
+
+/** Asegura que la fila 1 tenga los encabezados de revisión (cols 12-15). */
+function ensureReviewHeader(sh) {
+  if (sh.getLastColumn() < 15) {
+    sh.getRange(1, 12, 1, 4).setValues([['Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico']]);
+  }
 }
 
 function json(obj) {
