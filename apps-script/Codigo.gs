@@ -103,7 +103,7 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     // Acciones de revisión desde el panel (aprobar / anular). No llevan archivos.
-    if (data && (data.action === 'ats_aprobar' || data.action === 'ats_anular')) {
+    if (data && (data.action === 'ats_aprobar' || data.action === 'ats_anular' || data.action === 'ats_archivar')) {
       return revisarRegistro(data);
     }
     if (!data || !data.files || !data.files.length) {
@@ -224,11 +224,13 @@ function logToSheet(meta, folderUrl, saved) {
 }
 
 /**
- * REVISIÓN POR ÁREA — aprobar o anular un registro de ATS/Charla desde el panel.
- * data: { action:'ats_aprobar'|'ats_anular', token, carpeta, revisadoPor, mensaje? }
- *   - Aprobar: Estado='Aprobado'.
- *   - Anular : Estado='Anulado' + guarda el mensaje al técnico y envía a la PAPELERA
- *              de Drive los archivos de esa carpeta (recuperables ~30 días).
+ * REVISIÓN POR ÁREA — aprobar, anular o archivar un registro de ATS/Charla desde el panel.
+ * data: { action:'ats_aprobar'|'ats_anular'|'ats_archivar', token, carpeta, revisadoPor, mensaje? }
+ *   - Aprobar : Estado='Aprobado'.
+ *   - Anular  : Estado='Anulado' + guarda el mensaje al técnico y envía a la PAPELERA
+ *               de Drive los archivos de esa carpeta (recuperables ~30 días).
+ *   - Archivar: Estado='Archivado' (solo saca el anulado de la lista del panel; conserva
+ *               el motivo y NO toca Drive — los archivos ya se enviaron a papelera al anular).
  * Barrera básica por REVIEW_TOKEN (uso interno; ver nota en la constante).
  * Identifica la fila por la URL de carpeta (columna 10), la más reciente con esa URL.
  */
@@ -253,15 +255,19 @@ function revisarRegistro(data) {
     }
     if (fila < 0) return json({ ok: false, error: 'Registro no encontrado.' });
 
-    var anular = (data.action === 'ats_anular');
-    sh.getRange(fila, 12).setValue(anular ? 'Anulado' : 'Aprobado');
+    var estado = (data.action === 'ats_anular')   ? 'Anulado'
+               : (data.action === 'ats_archivar') ? 'Archivado'
+               : 'Aprobado';
+    sh.getRange(fila, 12).setValue(estado);
     sh.getRange(fila, 13).setValue(String(data.revisadoPor || ''));
     sh.getRange(fila, 14).setValue(new Date());
-    sh.getRange(fila, 15).setValue(anular ? String(data.mensaje || '') : '');
+    if (estado === 'Anulado')       sh.getRange(fila, 15).setValue(String(data.mensaje || ''));
+    else if (estado === 'Aprobado') sh.getRange(fila, 15).setValue('');
+    // 'Archivado' conserva el MensajeTecnico (el motivo original de la anulación).
 
     var papelera = 0;
-    if (anular) { papelera = trashCarpeta(carpeta); }
-    return json({ ok: true, estado: anular ? 'Anulado' : 'Aprobado', archivosPapelera: papelera });
+    if (estado === 'Anulado') { papelera = trashCarpeta(carpeta); }   // archivar NO manda nada a papelera
+    return json({ ok: true, estado: estado, archivosPapelera: papelera });
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   } finally {
