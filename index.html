@@ -86,7 +86,7 @@ input.invalid,select.invalid{border-color:#fca5a5;background:#fff7f7}
 select{appearance:none;-webkit-appearance:none;background-color:#fff;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
   background-repeat:no-repeat;background-position:right 12px center;padding-right:38px}
-select:disabled{background-color:#f1f5f9;color:var(--muted);-webkit-text-fill-color:var(--muted);cursor:not-allowed;opacity:1}
+select:disabled,input:disabled{background-color:#f1f5f9;color:var(--muted);-webkit-text-fill-color:var(--muted);cursor:not-allowed;opacity:1}
 .err{display:block;min-height:14px;font-size:11px;font-weight:600;color:var(--bad);margin-top:4px}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:600;color:#475569;margin:8px 0 0;cursor:pointer;font-size:12.5px}
 label.chk input{width:16px;height:16px;accent-color:var(--brand2);margin:0;flex:0 0 auto}
@@ -196,6 +196,7 @@ body.desktop .drop-hint{display:block}
         <div class="field">
           <label for="circuito">Circuito <span class="req" id="circuitoReq">*</span> <span class="opt-note" id="circuitoOpt" style="display:none">(opcional)</span></label>
           <input id="circuito" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Ej: 04 (solo números)">
+          <label class="chk"><input type="checkbox" id="snCircuito"> S/N · sin circuito asignado</label>
           <small class="err" data-for="circuito"></small>
         </div>
         <div class="field">
@@ -356,23 +357,27 @@ $('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b
    ============================================================ */
 /* Campos obligatorios según el modo: si "No aplica" (sin cliente) → el circuito es opcional. */
 function activeRequired(){return $('noAplica').checked?REQUIRED.filter(id=>id!=='circuito'):REQUIRED;}
+function circuitoSN(){return $('snCircuito').checked;}   // S/N = sin circuito asignado por ahora
 function validateField(id){
   const el=$(id), val=(el.value||'').trim();
   const err=document.querySelector(`.err[data-for="${id}"]`);
   let msg='';
-  if(!val){ if(activeRequired().includes(id)) msg='Campo obligatorio'; }
+  if(id==='circuito'&&circuitoSN()){ /* S/N: válido, sin número */ }
+  else if(!val){ if(activeRequired().includes(id)) msg='Campo obligatorio'; }
   else if(id==='fecha'&&isNaN(Date.parse(val))) msg='Fecha inválida';
   else if((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(val)) msg='Solo números';
   el.classList.toggle('invalid',!!msg);
-  el.classList.toggle('valid',!msg&&!!val);
+  el.classList.toggle('valid',!msg&&(!!val||(id==='circuito'&&circuitoSN())));
   if(err)err.textContent=msg;
   return !msg;
 }
-function formValid(){return activeRequired().every(id=>{const v=($(id).value||'').trim();
+function formValid(){return activeRequired().every(id=>{
+  if(id==='circuito'&&circuitoSN()) return true;                 // S/N cuenta como válido
+  const v=($(id).value||'').trim();
   return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(v));})&&files.length>0;}
 function updateUI(){
   const req=activeRequired();
-  const done=req.filter(id=>(($(id).value||'').trim())!=='').length+(files.length?1:0);
+  const done=req.filter(id=>(id==='circuito'&&circuitoSN())||(($(id).value||'').trim())!=='').length+(files.length?1:0);
   const pct=Math.round(done/(req.length+1)*100);
   $('gauge').style.setProperty('--p',pct);$('gaugePct').textContent=pct+'%';
   refreshSendBtn();
@@ -387,16 +392,27 @@ REQUIRED.forEach(id=>{const el=$(id);
   el.addEventListener('blur',()=>validateField(id));
 });
 
-/* ---------- "No aplica": evidencia sin cliente → se escribe la actividad ---------- */
+/* ---------- "No aplica" (cliente) y "S/N" (circuito): opciones sin dato asignado ---------- */
+function refreshCircuitoReq(){   // oculta el "*" si el circuito no aplica (sin cliente) o es S/N
+  $('circuitoReq').style.display = ($('noAplica').checked||$('snCircuito').checked) ? 'none' : '';
+}
 function applyNoAplica(on){
   $('clienteLbl').textContent = on ? 'Actividad específica a realizar' : 'Nombre del cliente';
   $('cliente').placeholder    = on ? 'EJ: MANTENIMIENTO PREVENTIVO DE MANGAS' : 'EJ: MINERA XYZ S.A.';
-  $('circuitoReq').style.display = on ? 'none' : '';   // sin cliente → circuito opcional
   $('circuitoOpt').style.display = on ? '' : 'none';
   $('circuito').placeholder      = on ? 'Opcional (solo números)' : 'Ej: 04 (solo números)';
+  refreshCircuitoReq();
   validateField('cliente');validateField('circuito');updateUI();
 }
+function applySN(on){   // S/N = actividad sin circuito asignado por el momento
+  const c=$('circuito');
+  c.disabled=on;
+  if(on){ c.value='S/N'; } else if(c.value==='S/N'){ c.value=''; }
+  refreshCircuitoReq();
+  validateField('circuito');updateUI();
+}
 $('noAplica').addEventListener('change',()=>{applyNoAplica($('noAplica').checked);saveDraft();});
+$('snCircuito').addEventListener('change',()=>{applySN($('snCircuito').checked);saveDraft();});
 
 /* ---------- Desplegables encadenados Área → División ---------- */
 function fillAreas(){
@@ -541,7 +557,7 @@ function renderThumbs(){
    ============================================================ */
 let draftT=null;
 function saveDraft(){clearTimeout(draftT);draftT=setTimeout(async()=>{
-  const d={tipo,noAplica:$('noAplica').checked};REQUIRED.forEach(id=>d[id]=$(id).value);
+  const d={tipo,noAplica:$('noAplica').checked,snCircuito:$('snCircuito').checked};REQUIRED.forEach(id=>d[id]=$(id).value);
   try{localStorage.setItem('draft',JSON.stringify(await enc(d)));}catch(e){}
 },400);}
 async function loadDraft(){
@@ -554,6 +570,7 @@ async function loadDraft(){
     });
     if(d.area&&AREAS[d.area]){$('area').value=d.area;populateDivisiones(d.area,d.division);}
     if(d.noAplica){$('noAplica').checked=true;applyNoAplica(true);}
+    if(d.snCircuito){$('snCircuito').checked=true;applySN(true);}
   }catch(e){}
 }
 
@@ -627,7 +644,7 @@ async function buildPayload(){
   return {
     app:CONFIG.appVersion,
     uploadId,                       // identifica el envío: permite reintentar SIN duplicar en Drive
-    meta:{tipo,cliente,circuito:$('circuito').value.trim(),
+    meta:{tipo,cliente,circuito:($('snCircuito').checked?'S/N':$('circuito').value.trim()),
           fecha,cuadrilla,area,division,enviadoEn:new Date().toISOString()},
     mesFolder:fn.mes, diaFolder:fn.dia, division,
     files:payloadFiles
