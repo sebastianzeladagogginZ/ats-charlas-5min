@@ -169,8 +169,8 @@ datos sumamente sensibles conviene además el cifrado/controles del backend.
   a lectura. Recuerda que, tras editar `Codigo.gs`, hay que **re-desplegar el backend
   manteniendo la misma URL** (*Implementar › Gestionar implementaciones › lápiz ›
   Versión: «Nueva» › Implementar*).
-- **En el Panel, el botón "Archivar" (en anulados) no persiste:** el Panel V33 agrega
-  la acción `ats_archivar` (saca de "Anulados" un documento que ya se corrigió y resubió
-  con otros datos). Requiere **re-desplegar el backend** una vez (misma URL) para que el
-  estado *Archivado* se guarde en la hoja. Sin el redeploy, el archivado solo se oculta en
-  esa sesión del navegador y reaparece al recargar.
+- **Botón "Archivar" (anulados) del Panel V33:** usa la acción `ats_archivar` del backend
+  (estado *Archivado*: saca de "Anulados" un documento que ya se corrigió y resubió con otros
+  datos, sin tocar Drive). **Ya desplegado** (Apps Script *Versión 9*, 5 ago 2026, misma URL)
+  → el archivado se guarda en la hoja y persiste para todos. Si a futuro editas `Codigo.gs`,
+  recuerda re-desplegar (misma URL) para que los cambios surtan efecto en `/exec`.
