@@ -41,6 +41,7 @@ con *"Añadir a pantalla de inicio"*. La *Parte 2* queda como referencia.
 | **Circuito solo numérico** | El campo *Circuito* acepta únicamente números; las letras se descartan al escribir |
 | **Circuito sin asignar** | Casilla **"S/N"**: marca el circuito como `S/N` (actividad sin circuito asignado por el momento) |
 | Carga automática a Drive | Backend **Google Apps Script** (`apps-script/Codigo.gs`) |
+| **Evidencia abierta a lectura** (jefes/coordinadores no piden acceso) | Al subir, el backend deja la carpeta como *"cualquiera con el enlace puede ver"* (`compartirLectura`); los archivos heredan el permiso |
 | Jerarquía **Mes › Día › División** | `getOrCreateFolder()` reutiliza carpetas existentes |
 | Varias cuadrillas, mismo día/división → misma carpeta, sin duplicados | `getFoldersByName` + **`LockService`** (creación serializada) |
 | Nombre con formato estándar de fecha | `TIPO_AAAA-MM-DD_DIVISION_CUADRILLA_HHMMSS_NN.jpg` |
@@ -160,3 +161,11 @@ datos sumamente sensibles conviene además el cifrado/controles del backend.
 - **No veo los cambios tras actualizar:** el HTML ahora se sirve *network-first*,
   así que basta recargar estando en línea. Si insiste, **Ctrl+Shift+R** o sube el
   número `CACHE` en `sw.js`.
+- **Al abrir la evidencia dice "Solicitar acceso" (necesita editor/lector):** desde
+  ahora el backend deja cada carpeta nueva como *"cualquiera con el enlace puede ver"*,
+  así que la evidencia recién subida se abre sin pedir acceso. **Para lo YA subido**
+  antes de este cambio, ejecuta **una sola vez** la función `abrirLecturaExistentes()`
+  desde el editor de Apps Script (menú *Ejecutar*): recorre todo el archivo y lo abre
+  a lectura. Recuerda que, tras editar `Codigo.gs`, hay que **re-desplegar el backend
+  manteniendo la misma URL** (*Implementar › Gestionar implementaciones › lápiz ›
+  Versión: «Nueva» › Implementar*).

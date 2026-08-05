@@ -128,6 +128,11 @@ function doPost(e) {
     // (evita carpetas duplicadas si dos cuadrillas suben en el mismo instante).
     var dest = createFolderPath(data, meta);
 
+    // Deja la carpeta destino libre para lectura con enlace (los archivos que se
+    // suban debajo heredan el permiso). Así el Panel abre la evidencia sin
+    // "solicitar acceso". Fuera del candado para no alargar la sección serializada.
+    compartirLectura(dest);
+
     // La subida de archivos NO necesita candado (crear archivos en una carpeta ya
     // existente no genera duplicados de carpeta), así varias cuadrillas suben en paralelo.
     var saved = [];
@@ -180,6 +185,18 @@ function getOrCreateFolder(parent, name) {
   var it = parent.getFoldersByName(name);
   if (it.hasNext()) return it.next();     // reutiliza la existente
   return parent.createFolder(name);       // o crea una nueva
+}
+
+/**
+ * Deja la carpeta (y por HERENCIA los archivos que contiene) como
+ * "cualquiera con el enlace puede ver". Así los jefes/coordinadores abren la
+ * evidencia desde el Panel SIN que Google les pida "solicitar acceso".
+ * Best-effort: si la configuración de Drive lo restringe, no rompe la carga.
+ */
+function compartirLectura(folder) {
+  try {
+    folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) { /* no interrumpir la subida si el permiso falla */ }
 }
 
 /** Limpia nombres para Drive (sin barras ni caracteres problemáticos). */
@@ -269,6 +286,32 @@ function ensureReviewHeader(sh) {
   if (sh.getLastColumn() < 15) {
     sh.getRange(1, 12, 1, 4).setValues([['Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico']]);
   }
+}
+
+/**
+ * MANTENIMIENTO — ejecutar UNA sola vez a mano desde el editor de Apps Script
+ * (menú «Ejecutar» → abrirLecturaExistentes). Recorre TODO lo que ya está bajo
+ * ROOT_FOLDER_ID y deja cada carpeta como "cualquiera con el enlace puede ver",
+ * para que la evidencia YA subida también se abra sin "solicitar acceso".
+ * La carpeta RAÍZ se deja intacta (su enlace no se comparte). Es best-effort:
+ * si una carpeta falla, sigue con las demás. Si el árbol fuese tan grande que
+ * agota el tiempo (6 min), vuelve a ejecutarla: reanuda sin duplicar nada.
+ * Devuelve cuántas carpetas se abrieron (visible en el registro de ejecución).
+ */
+function abrirLecturaExistentes() {
+  var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  var it = root.getFolders(), n = 0;
+  while (it.hasNext()) { n += compartirArbol_(it.next()); }   // los hijos de la raíz hacia abajo
+  Logger.log('Carpetas abiertas a lectura: ' + n);
+  return n;
+}
+
+/** Comparte a lectura la carpeta y, recursivamente, todas sus subcarpetas. */
+function compartirArbol_(folder) {
+  compartirLectura(folder);
+  var n = 1, it = folder.getFolders();
+  while (it.hasNext()) { n += compartirArbol_(it.next()); }
+  return n;
 }
 
 function json(obj) {
