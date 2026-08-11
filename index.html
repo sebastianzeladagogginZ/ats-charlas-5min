@@ -92,6 +92,21 @@ label.chk{display:flex;align-items:center;gap:8px;font-weight:600;color:#475569;
 label.chk input{width:16px;height:16px;accent-color:var(--brand2);margin:0;flex:0 0 auto}
 .opt-note{color:var(--muted);font-weight:600;font-size:11px}
 
+/* ---------- Participantes (Networking / Inspección y Diseño) ---------- */
+.part-row{border:1px solid var(--line);border-radius:12px;padding:12px 12px 4px;margin-bottom:10px;background:#fbfdff;position:relative}
+.part-row .grid2{margin-bottom:2px}
+.part-row .part-idx{position:absolute;top:-9px;left:12px;background:var(--brand);color:#fff;font-size:10.5px;font-weight:800;
+  padding:2px 9px;border-radius:999px;letter-spacing:.3px}
+.part-nom{font-weight:700}
+.part-nom.ok{color:var(--ok);border-color:#86efac;background:#f0fdf4}
+.part-msg{min-height:14px;font-size:11px;font-weight:600;margin:2px 0 8px}
+.part-msg.ok{color:var(--ok)} .part-msg.warn{color:var(--warn)}
+.part-rm{all:unset;cursor:pointer;color:var(--bad);font-size:11.5px;font-weight:700;padding:4px 2px 8px;display:inline-block}
+.part-rm:hover{text-decoration:underline}
+.add-person{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-weight:700;font-size:13px;
+  border:1.5px dashed var(--brand2);border-radius:11px;padding:10px 14px;background:#f0f9ff;transition:.15s}
+.add-person:hover{background:#e0f2fe}
+
 /* ---------- Zona de escaneo / archivos ---------- */
 .scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .scan-btn{all:unset;cursor:pointer;text-align:center;padding:16px 10px;border-radius:12px;
@@ -229,6 +244,17 @@ body.desktop .drop-hint{display:block}
       </div>
     </div>
 
+    <!-- 2b. Participantes (solo Networking e Inspección y Diseño) -->
+    <div class="card" id="participantesCard" hidden>
+      <h2><span class="n">✓</span> <span id="partTitle">Participante</span></h2>
+      <p class="opt-note" id="partHint" style="margin:-4px 0 14px">Escribe el DNI y el nombre aparece automáticamente.</p>
+      <div id="partList"></div>
+      <button type="button" class="add-person" id="addPersonBtn" hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Agregar otra persona
+      </button>
+    </div>
+
     <!-- 3. Escaneo -->
     <div class="card" id="docsCard">
       <h2><span class="n">3</span> Documentos escaneados <span class="req" style="color:var(--bad)">*</span></h2>
@@ -338,6 +364,51 @@ const AREAS={
   'PLANTA EXTERNA':['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo']
 };
 
+/* ============================================================
+   Padrón individual (DNI → nombre) de las áreas que se controlan por PERSONA
+   (no por cuadrilla): NETWORKING e INSPECCIÓN Y DISEÑO. Al teclear el DNI, el
+   nombre aparece solo, y el panel arma con esto la cobertura semanal individual
+   (total de participantes y quién falta). Es una herramienta interna: el padrón
+   viaja en el cliente a propósito, para autocompletar SIN conexión.
+   Para dar de alta a alguien nuevo, agrega su "DNI":"NOMBRE" al área que toca.
+   ============================================================ */
+const ROSTER_INDIVIDUAL={
+  'NETWORKING':{
+    '70910661':'TACO BARRETO LUIS FERNANDO',
+    '41421543':'QUISPE MEDINA JUAN MANUEL',
+    '74885450':'PETSA WISUM ELI',
+    '72028088':'CARRIZALES RAMIREZ RUSSELL NOE',
+    '75344537':'CABANILLAS ALAMO DANIEL ENRIQUE',
+    '73050277':'CASTRO ARANGO JOSE ABEL',
+    '71618777':'CORREA CORONADO CESAR IVAN',
+    '73265633':'FERNANDEZ RODRIGUEZ ALEJANDRO JESUS',
+    '47160041':'GAMARRA PALOMINO FREDY RICARDO',
+    '47787404':'GARCIA ARMIJO MIGUEL ANGEL',
+    '71402835':'HUAMAN QUISPE CHRISTIAN LEONARDO',
+    '72126999':'HURTADO VALLE VICTOR GABRIEL',
+    '45136221':'PUMARRUMI CORMAN EBER',
+    '75131658':'RAMOS VILLANUEVA JOHN ANGEL',
+    '74219379':'RIVERA RODRIGUEZ CARLOS MANUEL',
+    '71765976':'SOSA ALVA FABIAN BRUNO'
+  },
+  'INSPECCIÓN Y DISEÑO':{
+    '46195003':'TORIBIO POMA ANTHONY NELSON',
+    '75351929':'MALCA NALVARTE MIGUEL ANGEL',
+    '70814374':'DE LA CRUZ COLLANTES KEVIN JOSEPH',
+    '72213911':'LANDA LLAMOCCA LEOPOLDO RENE',
+    '16140603':'RODRIGUEZ OSORIO ANTONIO EDUARDO',
+    '73277588':'CALDERÓN DIONISIO ANDRÉ VISARIONOVICH'
+  }
+};
+/* Áreas que piden DNI (control por persona). Para éstas se muestra la tarjeta
+   de Participantes; sólo NETWORKING permite "2 o más personas". */
+const AREAS_INDIVIDUALES=Object.keys(ROSTER_INDIVIDUAL);
+const AREAS_MULTIPERSONA=['NETWORKING'];
+/* Normaliza un DNI a 8 dígitos (rellena ceros) para calzar con el padrón. */
+function padDni(s){ s=String(s||'').replace(/\D/g,''); return /^\d{1,8}$/.test(s)?('00000000'+s).slice(-8):s; }
+/* Nombre del padrón para (área, dni). '' si no está. */
+function nombreDeDni(area,dni){ var m=ROSTER_INDIVIDUAL[area]; return (m&&m[padDni(dni)])||''; }
+
 let tipo='ATS';
 let files=[];               // {id, blob, url, name, kb}
 let fileSeq=0;
@@ -374,11 +445,13 @@ function validateField(id){
 function formValid(){return activeRequired().every(id=>{
   if(id==='circuito'&&circuitoSN()) return true;                 // S/N cuenta como válido
   const v=($(id).value||'').trim();
-  return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(v));})&&files.length>0;}
+  return v!==''&&!(id==='fecha'&&isNaN(Date.parse(v)))&&!((id==='cuadrilla'||id==='circuito')&&!/^\d+$/.test(v));})&&files.length>0&&participantesValidos();}
 function updateUI(){
   const req=activeRequired();
-  const done=req.filter(id=>(id==='circuito'&&circuitoSN())||(($(id).value||'').trim())!=='').length+(files.length?1:0);
-  const pct=Math.round(done/(req.length+1)*100);
+  const extra=areaEsIndividual()?1:0;                                   // participante = 1 campo obligatorio extra
+  const doneP=extra&&participantes.some(partValida)?1:0;
+  const done=req.filter(id=>(id==='circuito'&&circuitoSN())||(($(id).value||'').trim())!=='').length+(files.length?1:0)+doneP;
+  const pct=Math.round(done/(req.length+1+extra)*100);
   $('gauge').style.setProperty('--p',pct);$('gaugePct').textContent=pct+'%';
   refreshSendBtn();
 }
@@ -413,6 +486,7 @@ function applySN(on){   // S/N = actividad sin circuito asignado por el momento
 }
 $('noAplica').addEventListener('change',()=>{applyNoAplica($('noAplica').checked);saveDraft();});
 $('snCircuito').addEventListener('change',()=>{applySN($('snCircuito').checked);saveDraft();});
+$('addPersonBtn').addEventListener('click',()=>{ if(!areaEsMultipersona())return; participantes.push({dni:'',nombre:''}); renderParticipantes(); updateUI(); saveDraft(); });
 
 /* ---------- Desplegables encadenados Área → División ---------- */
 function fillAreas(){
@@ -433,7 +507,76 @@ function populateDivisiones(area,selected){
   sel.disabled=false;
   if(selected&&AREAS[area].includes(selected))sel.value=selected;else ph.selected=true;
 }
-function onAreaChange(){populateDivisiones($('area').value);}
+function onAreaChange(){populateDivisiones($('area').value);onAreaIndividualChange();}
+
+/* ============================================================
+   Participantes (DNI → nombre) para NETWORKING e INSPECCIÓN Y DISEÑO.
+   El DNI trae el nombre del padrón; Networking permite 2 o más personas.
+   El panel usa estos DNIs para la cobertura semanal individual.
+   ============================================================ */
+let participantes=[{dni:'',nombre:''}];
+function areaActual(){ return $('area').value||''; }
+function areaEsIndividual(){ return AREAS_INDIVIDUALES.indexOf(areaActual())>=0; }
+function areaEsMultipersona(){ return AREAS_MULTIPERSONA.indexOf(areaActual())>=0; }
+function partValida(p){ return /^\d{8}$/.test(String(p&&p.dni||'').replace(/\D/g,'')); }
+function participantesValidos(){ return !areaEsIndividual() || participantes.some(partValida); }
+function participantesFilled(){ return participantes.filter(partValida); }
+
+// Se llama al cambiar de área: muestra/oculta la tarjeta y ajusta la lista.
+function onAreaIndividualChange(){
+  if(!areaEsIndividual()){ participantes=[{dni:'',nombre:''}]; }
+  else {
+    participantes.forEach(function(p){ p.nombre=nombreDeDni(areaActual(),p.dni); });
+    if(!areaEsMultipersona() && participantes.length>1) participantes=[participantes[0]];
+  }
+  renderParticipantes();
+}
+function aplicarNombre(area,p,dniIn,nomIn,msg){
+  var raw=(dniIn.value||'').replace(/\D/g,'');
+  var nom=nombreDeDni(area,raw);
+  if(nom){ p.nombre=nom; nomIn.value=nom; nomIn.classList.add('ok'); dniIn.classList.remove('invalid'); dniIn.classList.add('valid');
+           msg.className='part-msg ok'; msg.textContent='✓ '+nom; }
+  else if(raw.length>=8){ p.nombre=''; nomIn.value=''; nomIn.classList.remove('ok'); dniIn.classList.remove('valid');
+           msg.className='part-msg warn'; msg.textContent='DNI no está en el padrón — se registrará igual, sin nombre.'; }
+  else { p.nombre=''; nomIn.value=''; nomIn.classList.remove('ok'); dniIn.classList.remove('valid','invalid');
+           msg.className='part-msg'; msg.textContent=''; }
+}
+function renderParticipantes(){
+  var card=$('participantesCard');
+  if(!areaEsIndividual()){ card.hidden=true; $('addPersonBtn').hidden=true; return; }
+  card.hidden=false;
+  var area=areaActual(), multi=areaEsMultipersona();
+  $('partTitle').textContent = multi ? 'Participantes' : 'Participante';
+  $('partHint').textContent = multi
+    ? 'Escribe el DNI de cada persona; el nombre aparece solo. Si van 2 o más, agrégalas con el botón.'
+    : 'Escribe el DNI y el nombre aparece automáticamente.';
+  var list=$('partList'); list.innerHTML='';
+  participantes.forEach(function(p,i){
+    var row=document.createElement('div'); row.className='part-row'; row.dataset.idx=i;
+    var showRm = multi && participantes.length>1;
+    row.innerHTML =
+      (multi?'<span class="part-idx">Persona '+(i+1)+'</span>':'')+
+      '<div class="grid2">'+
+        '<div class="field"><label>DNI <span class="req">*</span></label>'+
+          '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" class="part-dni" placeholder="Ej: 70910661"></div>'+
+        '<div class="field"><label>Nombre</label>'+
+          '<input type="text" class="part-nom" readonly tabindex="-1" placeholder="Aparece al escribir el DNI"></div>'+
+      '</div>'+
+      '<div class="part-msg"></div>'+
+      (showRm?'<button type="button" class="part-rm">Quitar</button>':'');
+    var dniIn=row.querySelector('.part-dni'), nomIn=row.querySelector('.part-nom'), msg=row.querySelector('.part-msg');
+    dniIn.value=p.dni||'';
+    aplicarNombre(area,p,dniIn,nomIn,msg);
+    dniIn.addEventListener('input',function(){
+      var c=dniIn.value.replace(/[^0-9]/g,''); if(c!==dniIn.value){var pos=dniIn.selectionStart;dniIn.value=c;try{dniIn.setSelectionRange(pos,pos);}catch(e){}}
+      p.dni=dniIn.value; aplicarNombre(area,p,dniIn,nomIn,msg); updateUI(); saveDraft();
+    });
+    var rm=row.querySelector('.part-rm');
+    if(rm) rm.addEventListener('click',function(){ participantes.splice(i,1); if(!participantes.length)participantes=[{dni:'',nombre:''}]; renderParticipantes(); updateUI(); saveDraft(); });
+    list.appendChild(row);
+  });
+  $('addPersonBtn').hidden = !multi;
+}
 
 /* ============================================================
    Escaneo + compresión automática de imágenes
@@ -557,7 +700,9 @@ function renderThumbs(){
    ============================================================ */
 let draftT=null;
 function saveDraft(){clearTimeout(draftT);draftT=setTimeout(async()=>{
-  const d={tipo,noAplica:$('noAplica').checked,snCircuito:$('snCircuito').checked};REQUIRED.forEach(id=>d[id]=$(id).value);
+  const d={tipo,noAplica:$('noAplica').checked,snCircuito:$('snCircuito').checked,
+           participantes:participantes.map(p=>({dni:String(p.dni||'')}))};
+  REQUIRED.forEach(id=>d[id]=$(id).value);
   try{localStorage.setItem('draft',JSON.stringify(await enc(d)));}catch(e){}
 },400);}
 async function loadDraft(){
@@ -571,6 +716,10 @@ async function loadDraft(){
     if(d.area&&AREAS[d.area]){$('area').value=d.area;populateDivisiones(d.area,d.division);}
     if(d.noAplica){$('noAplica').checked=true;applyNoAplica(true);}
     if(d.snCircuito){$('snCircuito').checked=true;applySN(true);}
+    if(Array.isArray(d.participantes)&&d.participantes.length){
+      participantes=d.participantes.map(x=>({dni:String(x.dni||''),nombre:''}));
+    }
+    renderParticipantes();
   }catch(e){}
 }
 
@@ -584,7 +733,8 @@ let locks = {}; // { firma: timestampHasta }
 function currentSignature(){
   const n=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
   return [tipo, $('noAplica').checked?'NA':'CLI', n($('cliente').value), n($('circuito').value), $('fecha').value,
-          n($('cuadrilla').value), n($('area').value), n($('division').value)].join('|');
+          n($('cuadrilla').value), n($('area').value), n($('division').value),
+          areaEsIndividual()?padDni((participantesFilled()[0]||{}).dni):''].join('|');
 }
 function pruneLocks(){const now=Date.now();for(const k in locks)if(locks[k]<=now)delete locks[k];}
 async function saveLocks(){try{localStorage.setItem('locks',JSON.stringify(await enc(locks)));}catch(e){}}
@@ -641,11 +791,23 @@ async function buildPayload(){
     payloadFiles.push({name:fileName(fecha,area,division,cuadrilla,i,files[i].ext),mime:files[i].mime||'image/jpeg',dataB64:b64});
   }
   const uploadId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
+  const meta={tipo,cliente,circuito:($('snCircuito').checked?'S/N':$('circuito').value.trim()),
+              fecha,cuadrilla,area,division,enviadoEn:new Date().toISOString()};
+  // Áreas por persona (Networking / I&D): adjunta DNI + participantes.
+  // El panel usa meta.dnis para la cobertura semanal individual.
+  if(AREAS_INDIVIDUALES.indexOf(area)>=0){
+    const ps=participantesFilled().map(p=>({dni:padDni(p.dni),nombre:nombreDeDni(area,p.dni)}));
+    if(ps.length){
+      meta.dni=ps[0].dni; meta.nombre=ps[0].nombre;
+      meta.dnis=ps.map(p=>p.dni).join(',');                                   // csv legible por el panel
+      meta.participantes=ps.map(p=>p.dni+(p.nombre?(' '+p.nombre):'')).join(', ');
+      meta.nPersonas=ps.length;
+    }
+  }
   return {
     app:CONFIG.appVersion,
     uploadId,                       // identifica el envío: permite reintentar SIN duplicar en Drive
-    meta:{tipo,cliente,circuito:($('snCircuito').checked?'S/N':$('circuito').value.trim()),
-          fecha,cuadrilla,area,division,enviadoEn:new Date().toISOString()},
+    meta,
     mesFolder:fn.mes, diaFolder:fn.dia, division,
     files:payloadFiles
   };

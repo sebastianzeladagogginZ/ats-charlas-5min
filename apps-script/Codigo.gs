@@ -80,7 +80,12 @@ function leerRegistros(e) {
         estado:      String(r[11] || 'Pendiente'),   // col 12
         revisadoPor: String(r[12] || ''),            // col 13
         revisadoEn:  fechaTexto(r[13]),              // col 14
-        mensaje:     String(r[14] || '')             // col 15 (nota al técnico si se anuló)
+        mensaje:     String(r[14] || ''),            // col 15 (nota al técnico si se anuló)
+        // Áreas por persona (Networking / I&D): DNI + participantes. Cols 16-19.
+        dni:           String(r[15] || ''),          // col 16
+        nombre:        String(r[16] || ''),          // col 17
+        participantes: String(r[17] || ''),          // col 18 (legible)
+        dnis:          String(r[18] || '')           // col 19 (csv para el panel)
       });
     }
     return out;
@@ -211,14 +216,16 @@ function logToSheet(meta, folderUrl, saved) {
     var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
     var sh = ss.getSheetByName(LOG_SHEET_NAME) || ss.insertSheet(LOG_SHEET_NAME);
     if (sh.getLastRow() === 0) {
-      sh.appendRow(['Recibido', 'Tipo', 'Cliente', 'Circuito', 'Fecha', 'Cuadrilla', 'Área', 'División', 'N° archivos', 'Carpeta', 'Archivos', 'Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico']);
+      sh.appendRow(['Recibido', 'Tipo', 'Cliente', 'Circuito', 'Fecha', 'Cuadrilla', 'Área', 'División', 'N° archivos', 'Carpeta', 'Archivos', 'Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico', 'DNI', 'Nombre', 'Participantes', 'DNIs']);
     }
     ensureReviewHeader(sh);
+    ensureIndividualHeader(sh);
     sh.appendRow([
       new Date(), meta.tipo || '', meta.cliente || '', meta.circuito || '', meta.fecha || '',
       meta.cuadrilla || '', meta.area || '', meta.division || '',
       saved.length, folderUrl, saved.map(function (s) { return s.name; }).join(', '),
-      'Pendiente', '', '', ''   // Estado inicial: por revisar
+      'Pendiente', '', '', '',   // Estado inicial: por revisar
+      meta.dni || '', meta.nombre || '', meta.participantes || '', meta.dnis || ''   // DNI + participantes (áreas por persona)
     ]);
   } catch (e) { /* el registro no debe romper la carga */ }
 }
@@ -291,6 +298,15 @@ function trashCarpeta(url) {
 function ensureReviewHeader(sh) {
   if (sh.getLastColumn() < 15) {
     sh.getRange(1, 12, 1, 4).setValues([['Estado', 'RevisadoPor', 'RevisadoEn', 'MensajeTecnico']]);
+  }
+}
+
+/** Asegura los encabezados de áreas por persona (cols 16-19: DNI, Nombre,
+ *  Participantes, DNIs). Se añaden DESPUÉS de las columnas de revisión para no
+ *  desplazar las cols 12-15 que usa el ciclo de aprobación. */
+function ensureIndividualHeader(sh) {
+  if (sh.getLastColumn() < 19) {
+    sh.getRange(1, 16, 1, 4).setValues([['DNI', 'Nombre', 'Participantes', 'DNIs']]);
   }
 }
 
