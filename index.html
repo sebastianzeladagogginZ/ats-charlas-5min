@@ -221,7 +221,7 @@ body.desktop .drop-hint{display:block}
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" id="cuadrillaField">
         <label for="cuadrilla">Cuadrilla (N.º) <span class="req">*</span></label>
         <input id="cuadrilla" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Ej: 4">
         <small class="err" data-for="cuadrilla"></small>
@@ -427,7 +427,12 @@ $('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b
    Validación en tiempo real
    ============================================================ */
 /* Campos obligatorios según el modo: si "No aplica" (sin cliente) → el circuito es opcional. */
-function activeRequired(){return $('noAplica').checked?REQUIRED.filter(id=>id!=='circuito'):REQUIRED;}
+function activeRequired(){
+  let req=REQUIRED.slice();
+  if($('noAplica').checked) req=req.filter(id=>id!=='circuito');          // sin cliente → circuito opcional
+  if(areaEsIndividual()) req=req.filter(id=>id!=='cuadrilla');            // Networking / I&D no tienen cuadrilla
+  return req;
+}
 function circuitoSN(){return $('snCircuito').checked;}   // S/N = sin circuito asignado por ahora
 function validateField(id){
   const el=$(id), val=(el.value||'').trim();
@@ -530,6 +535,19 @@ function onAreaIndividualChange(){
     if(!areaEsMultipersona() && participantes.length>1) participantes=[participantes[0]];
   }
   renderParticipantes();
+  refreshCuadrillaVisibility();
+}
+// Networking e Inspección y Diseño no trabajan por cuadrilla: se oculta el campo
+// y deja de ser obligatorio (activeRequired ya lo excluye para esas áreas).
+function refreshCuadrillaVisibility(){
+  const field=$('cuadrillaField'); if(!field) return;
+  const ocultar=areaEsIndividual();
+  field.style.display = ocultar ? 'none' : '';
+  if(ocultar){
+    $('cuadrilla').value='';
+    $('cuadrilla').classList.remove('invalid','valid');
+    const err=document.querySelector('.err[data-for="cuadrilla"]'); if(err) err.textContent='';
+  }
 }
 function aplicarNombre(area,p,dniIn,nomIn,msg){
   var raw=(dniIn.value||'').replace(/\D/g,'');
@@ -720,6 +738,7 @@ async function loadDraft(){
       participantes=d.participantes.map(x=>({dni:String(x.dni||''),nombre:''}));
     }
     renderParticipantes();
+    refreshCuadrillaVisibility();
   }catch(e){}
 }
 
@@ -772,7 +791,9 @@ function fileName(fecha,area,division,cuadrilla,idx,ext){
   const now=new Date();
   const hhmmss=[now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0')).join('');
   // Incluye ÁREA porque una misma división (p.ej. "ON Negocios") existe en 2 áreas.
-  return `${tipo}_${fecha}_${slug(area)}_${slug(division)}_Cuadrilla-${slug(cuadrilla)}_${hhmmss}_${String(idx+1).padStart(2,'0')}.${ext||'jpg'}`;
+  // Sin cuadrilla (Networking / I&D) se omite ese tramo del nombre.
+  const cuadPart=slug(cuadrilla)?`_Cuadrilla-${slug(cuadrilla)}`:'';
+  return `${tipo}_${fecha}_${slug(area)}_${slug(division)}${cuadPart}_${hhmmss}_${String(idx+1).padStart(2,'0')}.${ext||'jpg'}`;
 }
 
 /* ============================================================
