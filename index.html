@@ -235,7 +235,7 @@ body.desktop .drop-hint{display:block}
         <small class="err" data-for="area"></small>
       </div>
 
-      <div class="field">
+      <div class="field" id="divisionField">
         <label for="division">División <span class="req">*</span></label>
         <select id="division" disabled>
           <option value="" disabled selected>Selecciona primero el área…</option>
@@ -361,7 +361,8 @@ const AREAS={
   'INSPECCIÓN Y DISEÑO':['Inspección y Diseño - Corporativo'],
   'MANTENIMIENTO':['Mantenimiento - Corporativo','Mantenimiento - Ultra','Mangas Críticas','ON Negocios','Normalización de Red'],
   'NETWORKING':['Instalaciones - Corporativo','ON-Site - Corporativo'],
-  'PLANTA EXTERNA':['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo']
+  'PLANTA EXTERNA':['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo'],
+  'ON EMPRESAS':[]   /* Área sin divisiones: al elegirla no se pide división ni nada más. */
 };
 
 /* ============================================================
@@ -431,6 +432,7 @@ function activeRequired(){
   let req=REQUIRED.slice();
   if($('noAplica').checked) req=req.filter(id=>id!=='circuito');          // sin cliente → circuito opcional
   if(areaEsIndividual()) req=req.filter(id=>id!=='cuadrilla');            // Networking / I&D no tienen cuadrilla
+  if(areaSinDivision()) req=req.filter(id=>id!=='division');             // ON EMPRESAS no tiene divisiones
   return req;
 }
 function circuitoSN(){return $('snCircuito').checked;}   // S/N = sin circuito asignado por ahora
@@ -500,9 +502,18 @@ function fillAreas(){
 }
 function populateDivisiones(area,selected){
   const sel=$('division');
+  const field=$('divisionField');
   sel.innerHTML='';
   sel.classList.remove('valid','invalid');
   const err=document.querySelector('.err[data-for="division"]');if(err)err.textContent='';
+  // Área sin divisiones (ej. ON EMPRESAS): oculta el campo y no pide división.
+  if(area&&AREAS[area]&&AREAS[area].length===0){
+    sel.value=''; sel.disabled=true;
+    sel.innerHTML='<option value="" selected>—</option>';
+    if(field) field.style.display='none';
+    return;
+  }
+  if(field) field.style.display='';
   if(!area||!AREAS[area]){
     sel.innerHTML='<option value="" disabled selected>Selecciona primero el área…</option>';
     sel.disabled=true;return;
@@ -523,6 +534,7 @@ let participantes=[{dni:'',nombre:''}];
 function areaActual(){ return $('area').value||''; }
 function areaEsIndividual(){ return AREAS_INDIVIDUALES.indexOf(areaActual())>=0; }
 function areaEsMultipersona(){ return AREAS_MULTIPERSONA.indexOf(areaActual())>=0; }
+function areaSinDivision(){ var a=areaActual(); return !!AREAS[a] && AREAS[a].length===0; }  // ON EMPRESAS y afines
 function partValida(p){ return /^\d{8}$/.test(String(p&&p.dni||'').replace(/\D/g,'')); }
 function participantesValidos(){ return !areaEsIndividual() || participantes.some(partValida); }
 function participantesFilled(){ return participantes.filter(partValida); }
