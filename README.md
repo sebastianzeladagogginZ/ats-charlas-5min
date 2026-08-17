@@ -128,14 +128,9 @@ const AREAS = {
   'INSPECCIÓN Y DISEÑO': ['Inspección y Diseño - Corporativo'],
   'MANTENIMIENTO': ['Mantenimiento - Corporativo','Mantenimiento - Ultra','Mangas Críticas','ON Negocios','Normalización de Red'],
   'NETWORKING': ['Instalaciones - Corporativo','ON-Site - Corporativo'],
-  'PLANTA EXTERNA': ['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo'],
-  'ON EMPRESAS': []   // arreglo vacío = área sin divisiones: no pide división ni nada más
+  'PLANTA EXTERNA': ['Planta Externa - Corporativo','ON Negocios','Normalización - Preventivo']
 };
 ```
-
-> **Área sin divisiones:** si a un área le pones un arreglo vacío (`[]`), como
-> `ON EMPRESAS`, la app oculta el menú de División y deja de exigirla — basta con
-> elegir el área.
 
 ---
 
