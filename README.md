@@ -134,6 +134,22 @@ const AREAS = {
 
 ---
 
+## 📧 Correo diario de pendientes de aprobar (09:00)
+
+Cada registro que sube la app queda en la hoja **`Registros`** con **`Estado = Pendiente`** hasta que un
+jefe lo aprueba o anula desde el Panel SSOMA. A partir de ese estado, un correo automático avisa **todos
+los días a las 9:00 a. m.** los ATS y Charlas que siguen **pendientes de aprobar**: a cada área los suyos
+y un resumen consolidado al equipo SSOMA.
+
+Ese envío **no vive en este repo**, sino en el proyecto del panel
+([`panel-ssoma` → `Correos_ATS_Charla.gs`](https://github.com/sebastianzeladagogginZ/panel-ssoma)),
+porque ahí está el roster de destinatarios (hoja `Jefes`). Sólo lee esta hoja `Registros` por su
+`LOG_SHEET_ID` (columna `Estado`), así que **no hay que cambiar nada en este backend**; basta con que
+`LOG_SHEET_ID` siga configurado. Detalles y puesta en marcha: README del panel, sección *«7. Correo
+diario de ATS y Charlas pendientes de aprobar»*.
+
+---
+
 ## 🔒 Nota sobre el cifrado local
 
 Los borradores del formulario y la cola de envíos pendientes se guardan
