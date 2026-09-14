@@ -134,6 +134,41 @@ const AREAS = {
 
 ---
 
+## 📧 Correo diario de pendientes de aprobar (09:00)
+
+Cada registro que sube la app queda en la hoja **`Registros`** con **`Estado = Pendiente`** hasta que un
+jefe lo aprueba o anula desde el Panel SSOMA. A partir de ese estado, un correo automático avisa **todos
+los días a las 9:00 a. m.** los ATS y Charlas que siguen **pendientes de aprobar**: a cada área los suyos
+y un resumen consolidado al equipo SSOMA.
+
+Ese envío **no vive en este repo**, sino en el proyecto del panel
+([`panel-ssoma` → `Correos_ATS_Charla.gs`](https://github.com/sebastianzeladagogginZ/panel-ssoma)),
+porque ahí está el roster de destinatarios (hoja `Jefes`). Sólo lee esta hoja `Registros` por su
+`LOG_SHEET_ID` (columna `Estado`). Detalles y puesta en marcha: README del panel, sección *«7. Correo
+diario de ATS y Charlas pendientes de aprobar»*.
+
+### 🛠️ Arreglo de "pendientes fantasma" (`Codigo.gs`)
+
+Una misma carpeta **Cliente-Circuito-Tipo** se reutiliza entre subidas, así que **varias filas de
+`Registros` comparten la misma URL de carpeta** (columna 10). Antes, al aprobar/anular desde el panel,
+`revisarRegistro` marcaba **sólo la fila más reciente** de esa carpeta y las demás quedaban `Pendiente`
+para siempre → el correo diario las seguía listando aunque el área ya las había revisado.
+
+- **`revisarRegistro`** ahora marca **todas** las filas de la carpeta (la aprobación es por carpeta, no
+  por subida individual). Requiere **re-desplegar el backend** manteniendo la misma URL `/exec`
+  (*Implementar › Gestionar implementaciones › lápiz › Versión «Nueva» › Implementar*) para que las
+  aprobaciones futuras usen la lógica nueva.
+- **`sincronizarEstadosPorCarpeta()`** (ejecutar **una vez** desde el editor; hay
+  `sincronizarEstadosPorCarpetaDryRun()` para simular sin escribir) limpia el **backlog**: propaga a las
+  filas `Pendiente` el estado resuelto de su carpeta, **sólo** si la revisión fue en/después de que llegó
+  la subida (`RevisadoEn ≥ Recibido`) — una subida nueva posterior a la última revisión **no** se toca.
+  Idempotente y no toca Drive.
+
+Mientras tanto, el correo del panel ya evita listar esas filas con `DEDUP_CARPETA_RESUELTA` (ver README
+del panel), y `diagnosticoPendientesATS()` permite ver cuántas hay y de qué áreas.
+
+---
+
 ## 🔒 Nota sobre el cifrado local
 
 Los borradores del formulario y la cola de envíos pendientes se guardan

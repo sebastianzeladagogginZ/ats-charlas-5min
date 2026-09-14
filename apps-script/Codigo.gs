@@ -239,7 +239,14 @@ function logToSheet(meta, folderUrl, saved) {
  *   - Archivar: Estado='Archivado' (solo saca el anulado de la lista del panel; conserva
  *               el motivo y NO toca Drive — los archivos ya se enviaron a papelera al anular).
  * Barrera básica por REVIEW_TOKEN (uso interno; ver nota en la constante).
- * Identifica la fila por la URL de carpeta (columna 10), la más reciente con esa URL.
+ * Identifica las filas por la URL de carpeta (columna 10).
+ *
+ * IMPORTANTE: una misma carpeta (Cliente-Circuito-Tipo) se REUTILIZA entre subidas,
+ * así que varias filas pueden compartir esa URL. Antes se marcaba SÓLO la fila más
+ * reciente y las demás quedaban "Pendiente" para siempre → el correo diario las
+ * seguía listando aunque el área ya las había revisado ("pendientes fantasma").
+ * Ahora se marcan TODAS las filas de esa carpeta, que es el modelo del panel
+ * (la aprobación/anulación es por carpeta, no por subida individual).
  */
 function revisarRegistro(data) {
   if (!LOG_SHEET_ID) return json({ ok: false, error: 'Sin hoja configurada.' });
@@ -256,30 +263,98 @@ function revisarRegistro(data) {
     ensureReviewHeader(sh);
     var last = sh.getLastRow();
     var urls = sh.getRange(2, 10, last - 1, 1).getValues();     // columna Carpeta
-    var fila = -1;
-    for (var i = urls.length - 1; i >= 0; i--) {                // la fila más reciente con esa carpeta
-      if (String(urls[i][0]) === carpeta) { fila = i + 2; break; }
+    var filas = [];
+    for (var i = 0; i < urls.length; i++) {                     // TODAS las filas de esa carpeta
+      if (String(urls[i][0]) === carpeta) filas.push(i + 2);
     }
-    if (fila < 0) return json({ ok: false, error: 'Registro no encontrado.' });
+    if (!filas.length) return json({ ok: false, error: 'Registro no encontrado.' });
 
     var estado = (data.action === 'ats_anular')   ? 'Anulado'
                : (data.action === 'ats_archivar') ? 'Archivado'
                : 'Aprobado';
-    sh.getRange(fila, 12).setValue(estado);
-    sh.getRange(fila, 13).setValue(String(data.revisadoPor || ''));
-    sh.getRange(fila, 14).setValue(new Date());
-    if (estado === 'Anulado')       sh.getRange(fila, 15).setValue(String(data.mensaje || ''));
-    else if (estado === 'Aprobado') sh.getRange(fila, 15).setValue('');
-    // 'Archivado' conserva el MensajeTecnico (el motivo original de la anulación).
+    var ahora = new Date();
+    filas.forEach(function (fila) {
+      sh.getRange(fila, 12).setValue(estado);
+      sh.getRange(fila, 13).setValue(String(data.revisadoPor || ''));
+      sh.getRange(fila, 14).setValue(ahora);
+      if (estado === 'Anulado')       sh.getRange(fila, 15).setValue(String(data.mensaje || ''));
+      else if (estado === 'Aprobado') sh.getRange(fila, 15).setValue('');
+      // 'Archivado' conserva el MensajeTecnico (el motivo original de la anulación).
+    });
 
     var papelera = 0;
     if (estado === 'Anulado') { papelera = trashCarpeta(carpeta); }   // archivar NO manda nada a papelera
-    return json({ ok: true, estado: estado, archivosPapelera: papelera });
+    return json({ ok: true, estado: estado, filas: filas.length, archivosPapelera: papelera });
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   } finally {
     try { lock.releaseLock(); } catch (e2) {}
   }
+}
+
+/**
+ * MANTENIMIENTO — corrige de una sola vez las "pendientes fantasma" que quedaron en la
+ * hoja ANTES de este arreglo: filas que siguen en "Pendiente" (o en blanco) pero cuya
+ * CARPETA ya tiene otra fila resuelta (Aprobado/Anulado/Archivado). Propaga a esas filas
+ * el estado resuelto más reciente de su carpeta, SÓLO si la revisión ocurrió EN/DESPUÉS
+ * de que llegó la subida (RevisadoEn ≥ Recibido) — así una subida NUEVA posterior a la
+ * última revisión NO se marca como resuelta por error. Idempotente y NO toca Drive.
+ *
+ * Uso (editor de Apps Script → Ejecutar):
+ *   sincronizarEstadosPorCarpetaDryRun()  → NO escribe; sólo reporta cuántas corregiría.
+ *   sincronizarEstadosPorCarpeta()        → aplica los cambios.
+ */
+function sincronizarEstadosPorCarpetaDryRun() { return sincronizarEstadosPorCarpeta(true); }
+
+function sincronizarEstadosPorCarpeta(dryRun) {
+  if (!LOG_SHEET_ID) { Logger.log('Sin hoja.'); return 'Sin hoja.'; }
+  var ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+  var sh = ss.getSheetByName(LOG_SHEET_NAME);
+  if (!sh || sh.getLastRow() < 2) { Logger.log('Sin registros.'); return 'Sin registros.'; }
+  ensureReviewHeader(sh);
+  var n = sh.getLastRow() - 1;
+  var d = sh.getRange(2, 1, n, Math.max(15, sh.getLastColumn())).getValues();
+  var RESUELTOS = { 'aprobado': 1, 'anulado': 1, 'archivado': 1 };
+  var norm = function (s) { return String(s == null ? '' : s).trim().toLowerCase(); };
+  var ms = function (v) { if (v instanceof Date) return isNaN(v.getTime()) ? 0 : v.getTime();
+                          if (!v) return 0; var t = new Date(v).getTime(); return isNaN(t) ? 0 : t; };
+
+  // 1) Resolución más reciente por carpeta (col 10 → idx 9; Estado 12→11; RevisadoEn 14→13).
+  var mejor = {};   // url → {estado, por, msg, enMs}
+  for (var i = 0; i < d.length; i++) {
+    var url = String(d[i][9] || '').trim(); if (!url) continue;
+    if (!RESUELTOS[norm(d[i][11])]) continue;
+    var enMs = ms(d[i][13]); if (!enMs) continue;                 // sin fecha de revisión → no arriesgar
+    if (!mejor[url] || enMs >= mejor[url].enMs) {
+      mejor[url] = { estado: String(d[i][11]), por: String(d[i][12] || ''), msg: String(d[i][14] || ''), enMs: enMs };
+    }
+  }
+
+  // 2) Aplicar a filas Pendiente/blanco cuya carpeta se resolvió EN/DESPUÉS de que llegaron.
+  var cambios = 0, ejemplos = [];
+  for (var j = 0; j < d.length; j++) {
+    var u = String(d[j][9] || '').trim(); if (!u) continue;
+    if (RESUELTOS[norm(d[j][11])]) continue;                      // ya resuelta
+    var m = mejor[u]; if (!m) continue;                           // su carpeta nunca se resolvió → pendiente real
+    var recMs = ms(d[j][0]);
+    if (recMs && recMs > m.enMs) continue;                        // subida POSTERIOR a la revisión → pendiente real
+    cambios++;
+    if (ejemplos.length < 25) ejemplos.push('fila ' + (j + 2) + ' · ' + String(d[j][2] || '') + ' → ' + m.estado);
+    if (!dryRun) {
+      var fila = j + 2;
+      sh.getRange(fila, 12).setValue(m.estado);
+      sh.getRange(fila, 13).setValue(m.por);
+      sh.getRange(fila, 14).setValue(new Date(m.enMs));
+      if (norm(m.estado) === 'aprobado') sh.getRange(fila, 15).setValue('');
+      else if (m.msg) sh.getRange(fila, 15).setValue(m.msg);
+    }
+  }
+
+  var msg = (dryRun ? '[DRY RUN] ' : '[APLICADO] ') + 'Pendientes fantasma corregidas: ' + cambios +
+            ' · carpetas con resolución: ' + Object.keys(mejor).length + '.';
+  Logger.log(msg);
+  ejemplos.forEach(function (s) { Logger.log('   – ' + s); });
+  return msg;
 }
 
 /** Envía a la papelera los archivos dentro de la carpeta (identificada por su URL). */
