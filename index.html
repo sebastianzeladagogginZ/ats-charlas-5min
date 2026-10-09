@@ -257,7 +257,7 @@ body.desktop .drop-hint{display:block}
 
     <!-- 3. Escaneo -->
     <div class="card" id="docsCard">
-      <h2><span class="n">3</span> Documentos escaneados <span class="req" style="color:var(--bad)">*</span></h2>
+      <h2><span class="n">3</span> <span id="docsTitle">Escaneo del ATS</span> <span class="req" style="color:var(--bad)">*</span></h2>
       <div class="scan-actions">
         <button type="button" class="scan-btn" id="camBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -266,13 +266,14 @@ body.desktop .drop-hint{display:block}
         </button>
         <button type="button" class="scan-btn" id="fileBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span class="lbl" id="fileLbl">Subir archivos</span>
+          <span class="lbl" id="fileLbl">Subir archivo</span>
           <small id="fileHint">de este dispositivo</small>
         </button>
       </div>
-      <div class="drop-hint" id="dropHint">o <strong>arrastra las fotos aquí</strong> desde la computadora</div>
+      <p class="opt-note" id="oneDocHint" style="margin:10px 0 0"><strong>Solo 1 archivo por envío.</strong> El ATS y la Charla de 5 min se envían por separado: elige el tipo en el paso 1 y sube su escaneo.</p>
+      <div class="drop-hint" id="dropHint">o <strong>arrastra la foto aquí</strong> desde la computadora</div>
       <input id="camInput" type="file" accept="image/*" capture="environment" hidden>
-      <input id="fileInput" type="file" accept="image/*" multiple hidden>
+      <input id="fileInput" type="file" accept="image/*" hidden>
       <div class="thumbs" id="thumbs"></div>
       <div class="count-note" id="fileNote">Sin documentos. Las imágenes se comprimen automáticamente antes de subir.</div>
     </div>
@@ -434,7 +435,7 @@ const $=id=>document.getElementById(id);
 /* ---------- Selector de tipo ---------- */
 $('seg').addEventListener('click',e=>{const b=e.target.closest('.seg-btn');if(!b)return;
   document.querySelectorAll('.seg-btn').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');tipo=b.dataset.tipo;updateUI();saveDraft();});
+  b.classList.add('active');tipo=b.dataset.tipo;docsTitle();updateUI();saveDraft();});
 
 /* ============================================================
    Validación en tiempo real
@@ -625,7 +626,7 @@ if(isTouch){
 }else{
   document.body.classList.add('desktop');
   $('camLbl').textContent='Cámara web';    $('camHint').textContent='si está disponible';
-  $('fileLbl').textContent='Subir archivos';$('fileHint').textContent='desde la computadora';
+  $('fileLbl').textContent='Subir archivo';$('fileHint').textContent='desde la computadora';
 }
 
 /* ---------- Arrastrar y soltar (computadora) ---------- */
@@ -672,9 +673,14 @@ async function compress(file){
   if(!blob)throw new Error('toBlob devolvió null');
   return {blob,mime:'image/jpeg',ext:'jpg'};
 }
+/* Un solo archivo por envío: cada apartado (ATS / Charla) lleva su propio escaneo. */
+function docsTitle(){$('docsTitle').textContent=tipo==='ATS'?'Escaneo del ATS':'Escaneo de la Charla de 5 min';}
 async function addFiles(list){
-  const arr=[...list].filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(f.name));
-  if(!arr.length){toast('err','Selecciona archivos de imagen.');return;}
+  let arr=[...list].filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(f.name));
+  if(!arr.length){toast('err','Selecciona un archivo de imagen.');return;}
+  const extra=arr.length>1, replaced=files.length>0;
+  arr=arr.slice(0,1);
+  files.forEach(f=>URL.revokeObjectURL(f.url));files=[];
   let ok=0, fallback=0;
   try{
     for(let i=0;i<arr.length;i++){
@@ -699,7 +705,7 @@ async function addFiles(list){
     // Reemplaza SIEMPRE el aviso "Comprimiendo…" (antes de pintar miniaturas, por si algo falla ahí).
     if(fallback&&ok) toast('info',`✅ ${ok} lista(s) · ${fallback} adjuntada(s) sin comprimir (formato no soportado, p. ej. HEIC).`,8000);
     else if(fallback) toast('info',`📎 Adjuntada sin comprimir: el navegador no pudo procesar el formato (p. ej. HEIC de iPhone). Se subirá igual.`,9000);
-    else if(ok) toast('ok',`✅ ${ok} imagen(es) lista(s).`);
+    else if(ok) toast(extra?'info':'ok',extra?'⚠️ Solo se permite 1 archivo por envío: se tomó el primero.':replaced?'🔄 Archivo reemplazado.':'✅ Imagen lista.',extra?8000:undefined);
     else hideToast();
     try{ renderThumbs(); updateUI(); }catch(e){ /* no debe bloquear el aviso */ }
   }
@@ -723,7 +729,7 @@ function renderThumbs(){
     files=files.filter(x=>x.id!==id);renderThumbs();updateUI();
   }));
   const n=files.length;
-  $('fileNote').textContent=n?`${n} documento(s) listos · se comprimen automáticamente a JPEG`:'Sin documentos. Las imágenes se comprimen automáticamente antes de subir.';
+  $('fileNote').textContent=n?'1 documento listo · para cambiarlo, toma o sube otro (se reemplaza)':'Sin documento. La imagen se comprime automáticamente antes de subir.';
 }
 
 /* ============================================================
@@ -739,7 +745,7 @@ function saveDraft(){clearTimeout(draftT);draftT=setTimeout(async()=>{
 async function loadDraft(){
   const raw=localStorage.getItem('draft');if(!raw)return;
   try{const d=await dec(JSON.parse(raw));
-    if(d.tipo){tipo=d.tipo;document.querySelectorAll('.seg-btn').forEach(x=>x.classList.toggle('active',x.dataset.tipo===tipo));}
+    if(d.tipo){tipo=d.tipo;document.querySelectorAll('.seg-btn').forEach(x=>x.classList.toggle('active',x.dataset.tipo===tipo));docsTitle();}
     REQUIRED.forEach(id=>{
       if(id==='area'||id==='division')return;            // se restauran aparte (encadenados)
       if(d[id]!=null&&(id!=='fecha'||d[id]))$(id).value=d[id];
@@ -790,7 +796,7 @@ function refreshSendBtn(){
   b.classList.remove('locked');
   if(formValid()){b.disabled=false;b.textContent='📤 Enviar y subir a Drive';}
   else{b.disabled=true;
-    b.textContent=files.length?'Completa los campos obligatorios':'Agrega al menos un documento';}
+    b.textContent=files.length?'Completa los campos obligatorios':'Agrega el documento escaneado';}
 }
 
 /* ============================================================
@@ -896,7 +902,7 @@ $('form').addEventListener('submit',async e=>{
     if(navigator.onLine&&endpointReady()){
       b.innerHTML='<span class="spin"></span> Subiendo a Drive…';
       const data=await sendPayload(payload);
-      toast('ok',`✅ Subido a Drive · ${payload.files.length} archivo(s) en <b>${payload.division}</b>.`+(data.folder?` <a href="${data.folder}" target="_blank" rel="noopener">Abrir carpeta</a>`:''),9000);
+      toast('ok',`✅ Subido a Drive · ${payload.files.length===1?'1 archivo':payload.files.length+' archivos'} en <b>${payload.division}</b>.`+(data.folder?` <a href="${data.folder}" target="_blank" rel="noopener">Abrir carpeta</a>`:''),9000);
     }else{
       await queuePayload(payload);
       toast('info','📴 Sin conexión: registro <b>cifrado y en cola</b>. Se subirá automáticamente al reconectar.',9000);
