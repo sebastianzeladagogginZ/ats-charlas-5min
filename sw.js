@@ -1,5 +1,5 @@
 /* Service Worker — capacidad sin conexión (app shell cache-first) */
-const CACHE = 'ats-charla-v19';
+const CACHE = 'ats-charla-v20';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
